@@ -17,6 +17,13 @@ final class GradesViewModel {
         let key = selection?.id ?? "default"
         if !forceReload, let cached = cache[key] { apply(cached); return }   // instant re-visit
 
+        // Cold launch: paint the last-known default semester from disk while the
+        // network refresh runs, so the screen isn't blank.
+        if selection == nil, !forceReload, grades.isEmpty,
+           let disk = DataStore.shared.cachedGrades {
+            apply(disk)
+        }
+
         isLoading = true
         errorMessage = nil
         do {

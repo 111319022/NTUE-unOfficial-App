@@ -39,7 +39,7 @@ struct NTUEService {
 
     // MARK: - Grades
 
-    struct GradesPage {
+    struct GradesPage: Codable {
         var grades: [Grade]
         var student: StudentInfo
         var semesters: [SemesterSelection]

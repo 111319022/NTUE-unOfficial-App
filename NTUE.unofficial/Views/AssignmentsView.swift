@@ -13,6 +13,10 @@ final class AssignmentsViewModel {
 
     /// Default (newest) semester — served from the prefetched cache.
     func loadDefault(forceReload: Bool = false) async {
+        // Cold launch: paint the last-known page from disk while refreshing.
+        if page == nil, !forceReload, let disk = DataStore.shared.cachedAssignments {
+            page = disk
+        }
         isLoading = true; errorMessage = nil
         do { page = try await DataStore.shared.moodleAssignments(forceReload: forceReload) }
         catch { errorMessage = error.localizedDescription }

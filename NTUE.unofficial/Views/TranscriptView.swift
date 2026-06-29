@@ -3,7 +3,7 @@ import SwiftUI
 @Observable
 @MainActor
 final class TranscriptViewModel {
-    struct SemesterGrades: Identifiable {
+    struct SemesterGrades: Identifiable, Codable {
         let selection: SemesterSelection
         let grades: [Grade]
         var id: String { selection.id }
@@ -15,26 +15,48 @@ final class TranscriptViewModel {
     var errorMessage: String?
 
     private let service = NTUEService.shared
+    private var didFetch = false
 
-    func load() async {
-        guard semesters.isEmpty else { return }
+    func load(forceReload: Bool = false) async {
+        // Stale-while-revalidate: paint last-known transcript from disk instantly,
+        // then refresh in the background. Skip a redundant refetch on re-visits.
+        if !didFetch, semesters.isEmpty,
+           let disk = Persistence.load([SemesterGrades].self, for: .transcript), !disk.isEmpty {
+            semesters = disk
+        }
+        guard forceReload || !didFetch else { return }
+
         isLoading = true
         errorMessage = nil
         do {
             // First call returns the default semester + the full semester list.
             let first = try await service.loadGrades(for: nil)
             let all = first.semesters
+            var assembled: [SemesterGrades] = []
             if let sel = first.selected {
-                append(SemesterGrades(selection: sel, grades: first.grades))
+                assembled.append(SemesterGrades(selection: sel, grades: first.grades))
             }
-            progress = (semesters.count, max(all.count, 1))
+            progress = (assembled.count, max(all.count, 1))
 
-            for sem in all where sem.id != first.selected?.id {
-                if let page = try? await service.loadGrades(for: sem) {
-                    append(SemesterGrades(selection: sem, grades: page.grades))
+            // Fetch the remaining semesters in parallel instead of one-by-one
+            // (each iNTUE request is ~10s, so serial was painfully slow).
+            let remaining = all.filter { $0.id != first.selected?.id }
+            try await withThrowingTaskGroup(of: SemesterGrades?.self) { group in
+                for sem in remaining {
+                    group.addTask {
+                        guard let page = try? await NTUEService.shared.loadGrades(for: sem) else { return nil }
+                        return SemesterGrades(selection: sem, grades: page.grades)
+                    }
                 }
-                progress = (semesters.count, all.count)
+                for try await item in group {
+                    if let item { assembled.append(item) }
+                    progress = (assembled.count, all.count)
+                }
             }
+
+            replaceAll(assembled)
+            didFetch = true
+            Persistence.save(semesters, for: .transcript)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -42,10 +64,11 @@ final class TranscriptViewModel {
         isLoading = false
     }
 
-    private func append(_ item: SemesterGrades) {
-        semesters.append(item)
-        // Newest semester first.
-        semesters.sort { ($0.selection.year, $0.selection.semester) > ($1.selection.year, $1.selection.semester) }
+    /// Replaces the list, newest semester first.
+    private func replaceAll(_ items: [SemesterGrades]) {
+        semesters = items.sorted {
+            ($0.selection.year, $0.selection.semester) > ($1.selection.year, $1.selection.semester)
+        }
     }
 
     // MARK: - Aggregates

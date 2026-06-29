@@ -12,6 +12,10 @@ final class AnnouncementsViewModel {
     var newestID: String? { page?.semesters.last?.id }
 
     func loadDefault(forceReload: Bool = false) async {
+        // Cold launch: paint the last-known page from disk while refreshing.
+        if page == nil, !forceReload, let disk = DataStore.shared.cachedAnnouncements {
+            page = disk
+        }
         isLoading = true; errorMessage = nil
         do { page = try await DataStore.shared.moodleAnnouncements(forceReload: forceReload) }
         catch { errorMessage = error.localizedDescription }

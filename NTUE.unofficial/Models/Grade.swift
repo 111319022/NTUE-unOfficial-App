@@ -1,7 +1,7 @@
 import Foundation
 
 /// One course's grade for a semester, decoded from the iNTUE DataTables JSON island.
-struct Grade: Identifiable, Hashable {
+struct Grade: Identifiable, Hashable, Codable {
     let id = UUID()
     let courseCode: String       // SemesterCourseNo
     let department: String       // StudyCourseCategoryName
@@ -21,6 +21,13 @@ struct Grade: Identifiable, Hashable {
     var isPassed: Bool { passed.contains("是") }
     var isRequired: Bool { required.contains("必") }
     var hasScore: Bool { scoreValue != nil }
+
+    // `id` is a local identity, not part of the persisted payload — exclude it so
+    // Codable doesn't warn about the immutable defaulted property.
+    private enum CodingKeys: String, CodingKey {
+        case courseCode, department, courseName, required, category, credits
+        case classGroup, instructor, score, passed, note, withdrawDate
+    }
 }
 
 /// Basic student profile parsed from the page header (學號 / 姓名 …).
@@ -126,7 +133,7 @@ enum NTUETerm {
 }
 
 /// A selectable academic year + semester (scraped from the page's <select> options).
-struct SemesterSelection: Identifiable, Hashable {
+struct SemesterSelection: Identifiable, Hashable, Codable {
     var year: String       // e.g. "114"  (民國年)
     var semester: String   // "1" 上學期 / "2" 下學期 / "3" 暑期
 

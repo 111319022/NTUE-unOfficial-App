@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One enrolled Moodle course (e.g. `1142_0328_電腦網路`).
-struct MoodleCourse: Identifiable, Hashable {
+struct MoodleCourse: Identifiable, Hashable, Codable {
     let id: Int
     let fullName: String
     let shortName: String
@@ -44,7 +44,7 @@ enum MoodleSubmissionState {
 }
 
 /// One assignment row in a course's `/mod/assign/index.php` table.
-struct MoodleAssignment: Identifiable, Hashable {
+struct MoodleAssignment: Identifiable, Hashable, Codable {
     let id: Int             // module id → /mod/assign/view.php?id=
     let name: String
     let dueDate: Date?
@@ -69,7 +69,7 @@ struct MoodleAssignment: Identifiable, Hashable {
 }
 
 /// Assignments grouped under one course (for the 作業 tab).
-struct MoodleCourseAssignments: Identifiable {
+struct MoodleCourseAssignments: Identifiable, Codable {
     let course: MoodleCourse
     let assignments: [MoodleAssignment]
     var id: Int { course.id }
@@ -80,7 +80,7 @@ struct MoodleCourseAssignments: Identifiable {
 }
 
 /// One course announcement (a discussion in a course's 公告 forum).
-struct MoodleAnnouncement: Identifiable, Hashable {
+struct MoodleAnnouncement: Identifiable, Hashable, Codable {
     let id: Int            // discussion id → /mod/forum/discuss.php?d=
     let courseName: String
     let subject: String

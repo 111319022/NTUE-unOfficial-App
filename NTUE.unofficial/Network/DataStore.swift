@@ -25,10 +25,16 @@ final class DataStore {
     /// instantly while a fresh fetch runs in the background.
     private(set) var cachedTimetable: Timetable?
     private(set) var cachedDeadlines: [MoodleDeadline]?
+    private(set) var cachedGrades: NTUEService.GradesPage?
+    private(set) var cachedAssignments: MoodleService.AssignmentsPage?
+    private(set) var cachedAnnouncements: MoodleService.AnnouncementsPage?
 
     private init() {
         cachedTimetable = Persistence.load(Timetable.self, for: .timetable)
         cachedDeadlines = Persistence.load([MoodleDeadline].self, for: .moodleDeadlines)
+        cachedGrades = Persistence.load(NTUEService.GradesPage.self, for: .grades)
+        cachedAssignments = Persistence.load(MoodleService.AssignmentsPage.self, for: .moodleAssignments)
+        cachedAnnouncements = Persistence.load(MoodleService.AnnouncementsPage.self, for: .moodleAnnouncements)
     }
 
     // MARK: - Accessors (cached, with in-flight de-duplication)
@@ -58,10 +64,23 @@ final class DataStore {
 
     func grades(forceReload: Bool = false) async throws -> NTUEService.GradesPage {
         if forceReload { gradesTask = nil }
-        if let task = gradesTask { return try await awaiting(task) { self.gradesTask = nil } }
-        let task = Task { try await service.loadGrades(for: nil) }
+        let task = gradesTask ?? Task { try await service.loadGrades(for: nil) }
         gradesTask = task
-        return try await awaiting(task) { self.gradesTask = nil }
+        do {
+            let page = try await task.value
+            // An empty default semester usually means a logged-out redirect —
+            // don't persist it; let the next call retry.
+            if page.grades.isEmpty {
+                gradesTask = nil
+            } else {
+                cachedGrades = page
+                Persistence.save(page, for: .grades)
+            }
+            return page
+        } catch {
+            gradesTask = nil
+            throw error
+        }
     }
 
     func moodleDeadlines(forceReload: Bool = false) async throws -> [MoodleDeadline] {
@@ -88,20 +107,42 @@ final class DataStore {
         if forceReload { assignmentsTask = nil }
         let task = assignmentsTask ?? Task { try await MoodleService.shared.loadCourseAssignments() }
         assignmentsTask = task
-        return try await awaiting(task) { self.assignmentsTask = nil }
+        do {
+            let page = try await task.value
+            // No semesters means the enrolled-course list came back empty — a
+            // dropped session rather than "no assignments"; don't persist it.
+            if page.semesters.isEmpty {
+                assignmentsTask = nil
+            } else {
+                cachedAssignments = page
+                Persistence.save(page, for: .moodleAssignments)
+            }
+            return page
+        } catch {
+            assignmentsTask = nil
+            throw error
+        }
     }
 
     func moodleAnnouncements(forceReload: Bool = false) async throws -> MoodleService.AnnouncementsPage {
         if forceReload { announcementsTask = nil }
         let task = announcementsTask ?? Task { try await MoodleService.shared.loadAnnouncements() }
         announcementsTask = task
-        return try await awaiting(task) { self.announcementsTask = nil }
-    }
-
-    /// Awaits a cached task; on failure drops it so the next caller can retry.
-    private func awaiting<T>(_ task: Task<T, Error>, onFailure: @escaping () -> Void) async throws -> T {
-        do { return try await task.value }
-        catch { onFailure(); throw error }
+        do {
+            let page = try await task.value
+            // Empty `announcements` is legitimate (nothing posted); guard on the
+            // enrolled-course-derived `semesters` to detect a dropped session.
+            if page.semesters.isEmpty {
+                announcementsTask = nil
+            } else {
+                cachedAnnouncements = page
+                Persistence.save(page, for: .moodleAnnouncements)
+            }
+            return page
+        } catch {
+            announcementsTask = nil
+            throw error
+        }
     }
 
     // MARK: - Lifecycle
@@ -124,6 +165,9 @@ final class DataStore {
         announcementsTask?.cancel(); announcementsTask = nil
         cachedTimetable = nil
         cachedDeadlines = nil
+        cachedGrades = nil
+        cachedAssignments = nil
+        cachedAnnouncements = nil
         Persistence.clearAll()
     }
 }

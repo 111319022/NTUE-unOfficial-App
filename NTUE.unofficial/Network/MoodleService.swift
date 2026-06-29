@@ -117,7 +117,7 @@ actor MoodleService {
 
     // MARK: - 作業 tab: every assignment per course, by semester
 
-    struct AssignmentsPage: Sendable {
+    struct AssignmentsPage: Sendable, Codable {
         var courses: [MoodleCourseAssignments]
         var semesters: [SemesterSelection]
         var selected: SemesterSelection?
@@ -151,7 +151,7 @@ actor MoodleService {
 
     // MARK: - 課程公告
 
-    struct AnnouncementsPage: Sendable {
+    struct AnnouncementsPage: Sendable, Codable {
         var announcements: [MoodleAnnouncement]
         var semesters: [SemesterSelection]
         var selected: SemesterSelection?

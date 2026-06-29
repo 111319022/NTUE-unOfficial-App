@@ -12,6 +12,10 @@ enum Persistence {
         case studentInfo
         case timetable
         case moodleDeadlines
+        case grades
+        case moodleAssignments
+        case moodleAnnouncements
+        case transcript
     }
 
     static func save<T: Encodable>(_ value: T, for key: Key) {
