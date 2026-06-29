@@ -2,16 +2,27 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var showOnboarding = false
 
     var body: some View {
-        switch appState.phase {
-        case .launching:
-            SplashView()
-        case .loggedOut:
-            LoginView()
-        case .loggedIn:
-            MainTabView()
+        Group {
+            switch appState.phase {
+            case .launching:
+                SplashView()
+            case .loggedOut:
+                LoginView()
+            case .loggedIn:
+                MainTabView()
+            }
         }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView {
+                hasSeenOnboarding = true
+                showOnboarding = false
+            }
+        }
+        .task { if !hasSeenOnboarding { showOnboarding = true } }
     }
 }
 

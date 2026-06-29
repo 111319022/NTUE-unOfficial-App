@@ -3,6 +3,7 @@ import SwiftUI
 struct ServicesView: View {
     @Environment(AppState.self) private var appState
     @AppStorage("app_theme") private var themeRaw = AppTheme.system.rawValue
+    @State private var showOnboarding = false
 
     var body: some View {
         List {
@@ -45,8 +46,21 @@ struct ServicesView: View {
                     Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             }
+
+            Section {
+                Button {
+                    showOnboarding = true
+                } label: {
+                    Label("重新觀看 App 介紹", systemImage: "sparkles")
+                }
+            } footer: {
+                Text("本 App 為學生自製，非學校官方出品；資料以 iNTUE 校務系統與 Moodle 教學平台為準。")
+            }
         }
         .navigationTitle("其他服務")
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView { showOnboarding = false }
+        }
     }
 
     private var profileRow: some View {
