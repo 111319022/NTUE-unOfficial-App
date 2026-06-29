@@ -79,8 +79,20 @@ struct MoodleCourseAssignments: Identifiable {
     }
 }
 
+/// One course announcement (a discussion in a course's 公告 forum).
+struct MoodleAnnouncement: Identifiable, Hashable {
+    let id: Int            // discussion id → /mod/forum/discuss.php?d=
+    let courseName: String
+    let subject: String
+    let author: String
+    let date: Date?
+    let dateText: String
+
+    var url: URL { URL(string: "https://md.ntue.edu.tw/mod/forum/discuss.php?d=\(id)")! }
+}
+
 /// A single upcoming deadline for the 首頁 widget (from the calendar action events).
-struct MoodleDeadline: Identifiable, Hashable {
+struct MoodleDeadline: Identifiable, Hashable, Codable {
     let id: Int
     let name: String
     let courseName: String

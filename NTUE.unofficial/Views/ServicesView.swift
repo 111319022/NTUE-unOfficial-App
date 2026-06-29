@@ -22,14 +22,20 @@ struct ServicesView: View {
 
             Section("教務") {
                 serviceLink("成績查詢", "chart.bar.doc.horizontal", .blue) { GradesView() }
+                serviceLink("歷年成績", "list.number", .cyan) { TranscriptView() }
                 serviceLink("修業進度管制", "chart.pie.fill", .purple) { ProgressControlView() }
                 serviceLink("公開課表查詢", "magnifyingglass", .teal) { PublicScheduleView() }
             }
 
             Section("學生事務") {
-                serviceLink("請假明細", "list.bullet.clipboard", .orange) { LeaveDetailView() }
+                serviceLink("請假 / 缺曠", "list.bullet.clipboard", .orange) { AttendanceView() }
                 serviceLink("請假申請", "square.and.pencil", .red) { LeaveApplyView() }
+                serviceLink("操行 / 獎懲", "star.circle.fill", .indigo) { ConductView() }
                 serviceLink("在學證明", "checkmark.seal.fill", .green) { EnrollmentCertificateView() }
+            }
+
+            Section("Moodle 教學平台") {
+                serviceLink("課程公告", "megaphone.fill", .pink) { AnnouncementsView() }
             }
 
             Section {
@@ -72,8 +78,9 @@ struct ServicesView: View {
                 Text(title)
             } icon: {
                 Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 29, height: 29)
                     .background(color)
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }

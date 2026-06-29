@@ -24,7 +24,7 @@ struct Grade: Identifiable, Hashable {
 }
 
 /// Basic student profile parsed from the page header (學號 / 姓名 …).
-struct StudentInfo: Equatable {
+struct StudentInfo: Equatable, Codable {
     var studentId: String = ""
     var name: String = ""
     var department: String = ""

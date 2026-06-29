@@ -245,6 +245,61 @@ enum NTUEParser {
         }
     }
 
+    // MARK: - 缺曠 / 操行 / 獎懲
+
+    static func absenceRecords(from html: String) -> [AbsenceRecord] {
+        guard let rows = jsonDataIsland(in: html) else { return [] }
+        return rows.compactMap { row in
+            let course = cleanText(str(row["SemesterCourseName"]))
+            guard !course.isEmpty else { return nil }
+            return AbsenceRecord(
+                courseName: course,
+                teacher: cleanText(str(row["Teacher"])),
+                classGroup: cleanText(str(row["StudyClassName"])),
+                absentOverTotal: cleanText(str(row["SessionTotalHour"])),
+                totalHours: cleanText(str(row["TotalTeacherHour"])),
+                failFlag: cleanText(str(row["Standard"]))
+            )
+        }
+    }
+
+    static func conductRecords(from html: String) -> [ConductRecord] {
+        guard let rows = jsonDataIsland(in: html) else { return [] }
+        return rows.compactMap { row in
+            let year = cleanText(str(row["ACADYear"]))
+            guard !year.isEmpty else { return nil }
+            return ConductRecord(
+                year: year,
+                semester: cleanText(str(row["Semester"])),
+                score: cleanText(str(row["EndScore"])),
+                merit: str(row["RP4"]),
+                minorMerit: str(row["RP5"]),
+                majorMerit: str(row["RP6"]),
+                warning: str(row["NoEliminateRP1"]),
+                minorDemerit: str(row["NoEliminateRP2"]),
+                majorDemerit: str(row["NoEliminateRP3"])
+            )
+        }
+    }
+
+    static func rewardPenaltyRecords(from html: String) -> [RewardPenaltyRecord] {
+        guard let rows = jsonDataIsland(in: html) else { return [] }
+        return rows.compactMap { row in
+            let type = cleanText(str(row["TotleBonusPenalty"]))
+            let reason = cleanText(str(row["Memo"]))
+            let article = cleanText(str(row["ReasonContent"]))
+            guard !(type.isEmpty && reason.isEmpty && article.isEmpty) else { return nil }
+            return RewardPenaltyRecord(
+                year: cleanText(str(row["ACADYear"])),
+                semester: cleanText(str(row["Semester"])),
+                type: type,
+                article: article,
+                reason: reason,
+                eliminateStatus: cleanText(str(row["EliminateStatus"]))
+            )
+        }
+    }
+
     // MARK: - Enrollment certificate (在學證明)
 
     /// Parses the a02280 page. Labels (生日 / 科系) repeat across the 中文 and

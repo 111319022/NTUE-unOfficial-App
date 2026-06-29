@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single class session in the weekly timetable.
-struct TimetableSession: Identifiable, Hashable {
+struct TimetableSession: Identifiable, Hashable, Codable {
     let id = UUID()
     let weekday: Int          // 1 = Monday … 7 = Sunday
     let periodName: String    // 節次, e.g. "0M", "1", "2"
@@ -10,19 +10,26 @@ struct TimetableSession: Identifiable, Hashable {
     let courseName: String    // 課程名稱
     let instructor: String    // 教師
     let classroom: String     // 教室
+
+    // `id` is a fresh local identifier, not part of the persisted payload.
+    private enum CodingKeys: String, CodingKey {
+        case weekday, periodName, periodTime, classGroup, courseName, instructor, classroom
+    }
 }
 
 /// One row (period) of the timetable grid.
-struct TimetablePeriod: Identifiable {
+struct TimetablePeriod: Identifiable, Codable {
     let id = UUID()
     let name: String          // SectionName 節次
     let time: String          // SectionTime, normalised to "07:10-08:00"
     /// weekday(1...7) -> session in that slot (if any)
     let slots: [Int: TimetableSession]
+
+    private enum CodingKeys: String, CodingKey { case name, time, slots }
 }
 
 /// The whole weekly timetable.
-struct Timetable {
+struct Timetable: Codable {
     let periods: [TimetablePeriod]
 
     var allSessions: [TimetableSession] {

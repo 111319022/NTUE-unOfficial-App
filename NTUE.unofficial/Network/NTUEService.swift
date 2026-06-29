@@ -24,6 +24,9 @@ struct NTUEService {
     private static let leaveURL = "\(NTUEClient.base)/f01/f01141"
     private static let enrollmentURL = "\(NTUEClient.base)/a02/a02280"
     private static let publicScheduleURL = "\(NTUEClient.base)/b09/b09120"
+    private static let absenceURL = "\(NTUEClient.base)/b11/b11170"
+    private static let conductURL = "\(NTUEClient.base)/f02/f02192"
+    private static let rewardURL = "\(NTUEClient.base)/f02/f021b0"
 
     // MARK: - Student profile
 
@@ -151,6 +154,23 @@ struct NTUEService {
 
         return LeavePage(records: NTUEParser.leaveRecords(from: response),
                          semesters: semesters, selected: target)
+    }
+
+    // MARK: - 缺曠 / 操行 / 獎懲 (GET serves the current semester inline)
+
+    func loadAbsences() async throws -> [AbsenceRecord] {
+        let html = try await client.get(Self.absenceURL)
+        return NTUEParser.absenceRecords(from: html)
+    }
+
+    func loadConductRecords() async throws -> [ConductRecord] {
+        let html = try await client.get(Self.conductURL)
+        return NTUEParser.conductRecords(from: html)
+    }
+
+    func loadRewardPenalties() async throws -> [RewardPenaltyRecord] {
+        let html = try await client.get(Self.rewardURL)
+        return NTUEParser.rewardPenaltyRecords(from: html)
     }
 
     // MARK: - Enrollment certificate (在學證明)

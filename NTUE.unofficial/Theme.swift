@@ -1,17 +1,30 @@
 import SwiftUI
+import UIKit
 
-/// Centralised colours & styling. NTUE's brand is a deep maroon/red.
+/// Centralised colours & styling. NTUE's brand is a deep maroon/red. Colours
+/// that read poorly on a dark background brighten automatically via `Color(light:dark:)`.
 enum Theme {
-    static let accent = Color(red: 0.62, green: 0.16, blue: 0.18)      // NTUE maroon
-    static let accentSoft = Color(red: 0.62, green: 0.16, blue: 0.18).opacity(0.12)
+    /// NTUE maroon — deep in light mode, brightened in dark mode so it stays legible.
+    static let accent = Color(
+        light: Color(red: 0.62, green: 0.16, blue: 0.18),
+        dark:  Color(red: 0.93, green: 0.45, blue: 0.48)
+    )
+    /// Tinted background behind the accent (avatars, etc.); a touch stronger in dark.
+    static let accentSoft = Color(
+        light: Color(red: 0.62, green: 0.16, blue: 0.18).opacity(0.12),
+        dark:  Color(red: 0.93, green: 0.45, blue: 0.48).opacity(0.20)
+    )
 
     static func scoreColor(_ score: Double?) -> Color {
         guard let score else { return .secondary }
         switch score {
-        case 90...: return Color(red: 0.13, green: 0.55, blue: 0.30)   // green
-        case 80..<90: return Color(red: 0.18, green: 0.45, blue: 0.70) // blue
+        case 90...: return Color(light: Color(red: 0.13, green: 0.55, blue: 0.30),
+                                 dark:  Color(red: 0.36, green: 0.78, blue: 0.50))   // green
+        case 80..<90: return Color(light: Color(red: 0.18, green: 0.45, blue: 0.70),
+                                   dark:  Color(red: 0.42, green: 0.67, blue: 0.95)) // blue
         case 60..<80: return .primary
-        default: return Color(red: 0.80, green: 0.22, blue: 0.22)      // red
+        default: return Color(light: Color(red: 0.80, green: 0.22, blue: 0.22),
+                              dark:  Color(red: 0.98, green: 0.45, blue: 0.45))      // red
         }
     }
 
@@ -51,8 +64,17 @@ struct Pill: View {
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(color.opacity(0.15))
+            .background(color.opacity(0.18))
             .foregroundStyle(color)
             .clipShape(Capsule())
+    }
+}
+
+extension Color {
+    /// A colour that resolves differently in light vs dark mode.
+    init(light: Color, dark: Color) {
+        self = Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
+        })
     }
 }

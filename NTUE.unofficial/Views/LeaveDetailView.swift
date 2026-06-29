@@ -26,25 +26,67 @@ final class LeaveDetailViewModel {
     }
 }
 
-struct LeaveDetailView: View {
-    @State private var vm = LeaveDetailViewModel()
+@Observable
+@MainActor
+final class AbsenceViewModel {
+    var records: [AbsenceRecord] = []
+    var isLoading = false
+    var errorMessage: String?
+
+    private let service = NTUEService.shared
+
+    func load() async {
+        isLoading = true
+        errorMessage = nil
+        do { records = try await service.loadAbsences() }
+        catch { errorMessage = error.localizedDescription }
+        isLoading = false
+    }
+}
+
+/// Combined 請假 / 缺曠 view — the two attendance-related records in one place.
+struct AttendanceView: View {
+    @State private var leaveVM = LeaveDetailViewModel()
+    @State private var absenceVM = AbsenceViewModel()
+    @State private var mode: Mode = .leave
+
+    enum Mode: String, CaseIterable { case leave = "請假紀錄", absence = "缺曠紀錄" }
 
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $mode) {
+                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            switch mode {
+            case .leave: leaveContent
+            case .absence: absenceContent
+            }
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("請假 / 缺曠")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { if leaveVM.records.isEmpty { await leaveVM.load() } }
+    }
+
+    // MARK: 請假
+
+    @ViewBuilder
+    private var leaveContent: some View {
         Group {
-            if vm.isLoading && vm.records.isEmpty {
-                ProgressView("載入請假紀錄…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = vm.errorMessage, vm.records.isEmpty {
-                ContentUnavailableView {
-                    Label("載入失敗", systemImage: "wifi.slash")
-                } description: { Text(error) } actions: {
-                    Button("重試") { Task { await vm.load(vm.selected) } }.buttonStyle(.borderedProminent)
-                }
-            } else if vm.records.isEmpty {
+            if leaveVM.isLoading && leaveVM.records.isEmpty {
+                loading("載入請假紀錄…")
+            } else if let error = leaveVM.errorMessage, leaveVM.records.isEmpty {
+                retry(error) { await leaveVM.load(leaveVM.selected) }
+            } else if leaveVM.records.isEmpty {
                 ContentUnavailableView("此學期沒有請假紀錄", systemImage: "calendar.badge.checkmark")
             } else {
                 ScrollView {
                     VStack(spacing: 12) {
-                        ForEach(vm.records) { record in
+                        ForEach(leaveVM.records) { record in
                             NavigationLink {
                                 LeaveRecordDetailView(record: record)
                             } label: {
@@ -55,30 +97,96 @@ struct LeaveDetailView: View {
                     }
                     .padding(16)
                 }
-                .background(Color(.systemGroupedBackground))
-                .refreshable { await vm.load(vm.selected) }
+                .refreshable { await leaveVM.load(leaveVM.selected) }
             }
         }
-        .navigationTitle("請假明細")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if !vm.semesters.isEmpty {
+                if !leaveVM.semesters.isEmpty {
                     Menu {
-                        ForEach(vm.semesters) { sem in
+                        ForEach(leaveVM.semesters) { sem in
                             Button {
-                                Task { await vm.load(sem) }
+                                Task { await leaveVM.load(sem) }
                             } label: {
-                                if sem.id == vm.selected?.id {
+                                if sem.id == leaveVM.selected?.id {
                                     Label(sem.shortLabel, systemImage: "checkmark")
                                 } else { Text(sem.shortLabel) }
                             }
                         }
-                    } label: { Label(vm.selected?.shortLabel ?? "學期", systemImage: "calendar") }
+                    } label: { Label(leaveVM.selected?.shortLabel ?? "學期", systemImage: "calendar") }
                 }
             }
         }
-        .task { if vm.records.isEmpty { await vm.load() } }
+    }
+
+    // MARK: 缺曠
+
+    @ViewBuilder
+    private var absenceContent: some View {
+        Group {
+            if absenceVM.isLoading && absenceVM.records.isEmpty {
+                loading("載入缺曠紀錄…")
+            } else if let error = absenceVM.errorMessage, absenceVM.records.isEmpty {
+                retry(error) { await absenceVM.load() }
+            } else if absenceVM.records.isEmpty {
+                ContentUnavailableView("目前沒有缺曠紀錄", systemImage: "checkmark.seal.fill", description: Text("本學期全勤，繼續保持 🎉"))
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(absenceVM.records) { AbsenceCard(record: $0) }
+                    }
+                    .padding(16)
+                }
+                .refreshable { await absenceVM.load() }
+            }
+        }
+        .task { if absenceVM.records.isEmpty { await absenceVM.load() } }
+    }
+
+    // MARK: helpers
+
+    private func loading(_ text: String) -> some View {
+        ProgressView(text).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func retry(_ message: String, action: @escaping () async -> Void) -> some View {
+        ContentUnavailableView {
+            Label("載入失敗", systemImage: "wifi.slash")
+        } description: { Text(message) } actions: {
+            Button("重試") { Task { await action() } }.buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+struct AbsenceCard: View {
+    let record: AbsenceRecord
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(record.courseName).font(.subheadline.bold())
+                    Spacer()
+                    Pill(text: "缺曠 \(record.absentOverTotal)", color: pillColor)
+                }
+                HStack(spacing: 16) {
+                    if !record.teacher.isEmpty { Label(record.teacher, systemImage: "person") }
+                    if !record.classGroup.isEmpty { Label(record.classGroup, systemImage: "person.3") }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                if record.reachedFailThreshold {
+                    Label("已達零分標準，請注意", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private var pillColor: Color {
+        if record.reachedFailThreshold { return .red }
+        return record.hasAbsence ? .orange : .green
     }
 }
 

@@ -128,6 +128,28 @@ actor MoodleService {
         }
     }
 
+    // MARK: - 課程公告
+
+    func loadAnnouncements() async throws -> [MoodleAnnouncement] {
+        let sk = try await ensureSession()
+        let current = currentSemesterCourses(try await fetchEnrolledCourses(sesskey: sk))
+
+        return try await withThrowingTaskGroup(of: [MoodleAnnouncement].self) { group in
+            for course in current {
+                group.addTask {
+                    let courseHTML = (try? await NTUEClient.shared.get("\(Self.base)/course/view.php?id=\(course.id)")) ?? ""
+                    guard let forumId = MoodleParser.announcementForumId(fromCoursePage: courseHTML) else { return [] }
+                    let forumHTML = (try? await NTUEClient.shared.get("\(Self.base)/mod/forum/view.php?id=\(forumId)")) ?? ""
+                    return MoodleParser.announcements(courseName: course.displayName, fromForum: forumHTML)
+                }
+            }
+            var out: [MoodleAnnouncement] = []
+            for try await items in group { out.append(contentsOf: items) }
+            // Newest first; undated entries sink to the bottom.
+            return out.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        }
+    }
+
     private func fetchEnrolledCourses(sesskey: String) async throws -> [MoodleCourse] {
         let data = try await ajax(
             "core_course_get_enrolled_courses_by_timeline_classification",

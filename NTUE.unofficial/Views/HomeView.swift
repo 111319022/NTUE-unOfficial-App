@@ -7,12 +7,18 @@ final class HomeViewModel {
     var isLoading = false
     var errorMessage: String?
 
+    init() {
+        // Paint instantly from the last-known timetable; .task refreshes it.
+        if let cached = DataStore.shared.cachedTimetable { timetable = cached }
+    }
+
     func load(studentId: String, forceReload: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
             let page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
-            timetable = page.timetable
+            // Keep showing cached data if a refresh transiently returns nothing.
+            if !page.timetable.isEmpty || timetable.isEmpty { timetable = page.timetable }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -98,10 +104,15 @@ final class HomeMoodleViewModel {
     var isLoading = false
     var loaded = false
 
+    init() {
+        if let cached = DataStore.shared.cachedDeadlines { deadlines = cached }
+    }
+
     func load(forceReload: Bool = false) async {
         isLoading = true
         defer { isLoading = false; loaded = true }
-        if let result = try? await DataStore.shared.moodleDeadlines(forceReload: forceReload) {
+        if let result = try? await DataStore.shared.moodleDeadlines(forceReload: forceReload),
+           !result.isEmpty || deadlines.isEmpty {
             deadlines = result
         }
     }
@@ -134,7 +145,7 @@ struct HomeView: View {
             await vm.load(studentId: appState.studentInfo.studentId, forceReload: true)
             await moodle.load(forceReload: true)
         }
-        .task { if vm.timetable.isEmpty { await vm.load(studentId: appState.studentInfo.studentId) } }
+        .task { await vm.load(studentId: appState.studentInfo.studentId) }
         .task { if !moodle.loaded { await moodle.load() } }
         .sheet(item: $sheet) { d in NTUEWebSheet(url: d.url, title: d.title) }
     }

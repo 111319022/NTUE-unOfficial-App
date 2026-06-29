@@ -11,6 +11,10 @@ final class ScheduleViewModel {
 
     private let service = NTUEService.shared
 
+    init() {
+        if let cached = DataStore.shared.cachedTimetable { timetable = cached }
+    }
+
     func load(_ selection: SemesterSelection? = nil, studentId: String, forceReload: Bool = false) async {
         isLoading = true
         errorMessage = nil
@@ -20,10 +24,12 @@ final class ScheduleViewModel {
             let page: NTUEService.SchedulePage
             if selection == nil {
                 page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
+                // Default refresh: don't clobber a good grid with a transient empty.
+                if !page.timetable.isEmpty || timetable.isEmpty { timetable = page.timetable }
             } else {
                 page = try await service.loadTimetable(for: selection, studentId: studentId)
+                timetable = page.timetable   // explicit semester switch: show exactly what came back
             }
-            timetable = page.timetable
             if !page.semesters.isEmpty { semesters = page.semesters }
             selected = page.selected
         } catch {
@@ -78,7 +84,7 @@ struct ScheduleView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
-        .task { if vm.timetable.isEmpty { await reload() } }
+        .task { await reload() }
     }
 
     private func reload(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {

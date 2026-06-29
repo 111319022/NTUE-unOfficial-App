@@ -12,7 +12,6 @@ import Foundation
 @Observable
 final class DataStore {
     static let shared = DataStore()
-    private init() {}
 
     private let service = NTUEService.shared
 
@@ -20,15 +19,38 @@ final class DataStore {
     private var gradesTask: Task<NTUEService.GradesPage, Error>?
     private var deadlinesTask: Task<[MoodleDeadline], Error>?
     private var assignmentsTask: Task<[MoodleCourseAssignments], Error>?
+    private var announcementsTask: Task<[MoodleAnnouncement], Error>?
+
+    /// Last-known snapshots, hydrated from disk at launch so screens paint
+    /// instantly while a fresh fetch runs in the background.
+    private(set) var cachedTimetable: Timetable?
+    private(set) var cachedDeadlines: [MoodleDeadline]?
+
+    private init() {
+        cachedTimetable = Persistence.load(Timetable.self, for: .timetable)
+        cachedDeadlines = Persistence.load([MoodleDeadline].self, for: .moodleDeadlines)
+    }
 
     // MARK: - Accessors (cached, with in-flight de-duplication)
 
     func timetable(studentId: String, forceReload: Bool = false) async throws -> NTUEService.SchedulePage {
         if forceReload { timetableTask = nil }
-        if let task = timetableTask { return try await awaiting(task) { self.timetableTask = nil } }
-        let task = Task { try await service.loadTimetable(for: nil, studentId: studentId) }
+        let task = timetableTask ?? Task { try await service.loadTimetable(for: nil, studentId: studentId) }
         timetableTask = task
-        return try await awaiting(task) { self.timetableTask = nil }
+        do {
+            let page = try await task.value
+            if page.timetable.isEmpty {
+                // Likely a logged-out redirect — don't cache; let the next call retry.
+                timetableTask = nil
+            } else {
+                cachedTimetable = page.timetable
+                Persistence.save(page.timetable, for: .timetable)
+            }
+            return page
+        } catch {
+            timetableTask = nil
+            throw error
+        }
     }
 
     func grades(forceReload: Bool = false) async throws -> NTUEService.GradesPage {
@@ -41,10 +63,22 @@ final class DataStore {
 
     func moodleDeadlines(forceReload: Bool = false) async throws -> [MoodleDeadline] {
         if forceReload { deadlinesTask = nil }
-        if let task = deadlinesTask { return try await awaiting(task) { self.deadlinesTask = nil } }
-        let task = Task { try await MoodleService.shared.loadUpcomingDeadlines(limit: 12) }
+        let task = deadlinesTask ?? Task { try await MoodleService.shared.loadUpcomingDeadlines(limit: 12) }
         deadlinesTask = task
-        return try await awaiting(task) { self.deadlinesTask = nil }
+        do {
+            let result = try await task.value
+            if result.isEmpty {
+                // Empty can mean "no homework" or a dropped session — don't persist; allow retry.
+                deadlinesTask = nil
+            } else {
+                cachedDeadlines = result
+                Persistence.save(result, for: .moodleDeadlines)
+            }
+            return result
+        } catch {
+            deadlinesTask = nil
+            throw error
+        }
     }
 
     func moodleAssignments(forceReload: Bool = false) async throws -> [MoodleCourseAssignments] {
@@ -53,6 +87,13 @@ final class DataStore {
         let task = Task { try await MoodleService.shared.loadCourseAssignments() }
         assignmentsTask = task
         return try await awaiting(task) { self.assignmentsTask = nil }
+    }
+
+    func moodleAnnouncements(forceReload: Bool = false) async throws -> [MoodleAnnouncement] {
+        if forceReload { announcementsTask = nil }
+        let task = announcementsTask ?? Task { try await MoodleService.shared.loadAnnouncements() }
+        announcementsTask = task
+        return try await awaiting(task) { self.announcementsTask = nil }
     }
 
     /// Awaits a cached task; on failure drops it so the next caller can retry.
@@ -70,6 +111,7 @@ final class DataStore {
         Task { _ = try? await grades() }
         Task { _ = try? await moodleDeadlines() }
         Task { _ = try? await moodleAssignments() }
+        Task { _ = try? await moodleAnnouncements() }
     }
 
     func clear() {
@@ -77,5 +119,9 @@ final class DataStore {
         gradesTask?.cancel(); gradesTask = nil
         deadlinesTask?.cancel(); deadlinesTask = nil
         assignmentsTask?.cancel(); assignmentsTask = nil
+        announcementsTask?.cancel(); announcementsTask = nil
+        cachedTimetable = nil
+        cachedDeadlines = nil
+        Persistence.clearAll()
     }
 }
