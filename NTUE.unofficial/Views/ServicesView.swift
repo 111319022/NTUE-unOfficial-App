@@ -2,11 +2,22 @@ import SwiftUI
 
 struct ServicesView: View {
     @Environment(AppState.self) private var appState
+    @AppStorage("app_theme") private var themeRaw = AppTheme.system.rawValue
 
     var body: some View {
         List {
             Section {
                 profileRow
+            }
+
+            Section("外觀") {
+                Picker(selection: $themeRaw) {
+                    ForEach(AppTheme.allCases) { theme in
+                        Label(theme.label, systemImage: theme.icon).tag(theme.rawValue)
+                    }
+                } label: {
+                    Label("主題", systemImage: "paintbrush.fill")
+                }
             }
 
             Section("教務") {

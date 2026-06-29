@@ -11,11 +11,18 @@ final class ScheduleViewModel {
 
     private let service = NTUEService.shared
 
-    func load(_ selection: SemesterSelection? = nil, studentId: String) async {
+    func load(_ selection: SemesterSelection? = nil, studentId: String, forceReload: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
-            let page = try await service.loadTimetable(for: selection, studentId: studentId)
+            // The default semester is shared with 首頁 via DataStore (prefetched);
+            // an explicit semester switch always hits the network fresh.
+            let page: NTUEService.SchedulePage
+            if selection == nil {
+                page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
+            } else {
+                page = try await service.loadTimetable(for: selection, studentId: studentId)
+            }
             timetable = page.timetable
             if !page.semesters.isEmpty { semesters = page.semesters }
             selected = page.selected
@@ -74,17 +81,17 @@ struct ScheduleView: View {
         .task { if vm.timetable.isEmpty { await reload() } }
     }
 
-    private func reload(_ selection: SemesterSelection? = nil) async {
-        await vm.load(selection ?? vm.selected, studentId: appState.studentInfo.studentId)
+    private func reload(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        await vm.load(selection ?? vm.selected, studentId: appState.studentInfo.studentId, forceReload: forceReload)
     }
 
     @ViewBuilder
     private var content: some View {
         switch mode {
         case .grid: TimetableGridView(periods: vm.visiblePeriods, weekdays: vm.activeWeekdays)
-            .refreshable { await reload() }
+            .refreshable { await reload(forceReload: true) }
         case .list: CourseListView(courses: vm.timetable.courseSummaries)
-            .refreshable { await reload() }
+            .refreshable { await reload(forceReload: true) }
         }
     }
 

@@ -7,13 +7,11 @@ final class HomeViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    private let service = NTUEService.shared
-
-    func load(studentId: String) async {
+    func load(studentId: String, forceReload: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
-            let page = try await service.loadTimetable(for: nil, studentId: studentId)
+            let page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
             timetable = page.timetable
         } catch {
             errorMessage = error.localizedDescription
@@ -70,6 +68,27 @@ final class HomeViewModel {
         }
         return nil
     }
+
+    /// The next day (within the coming week) that has classes, starting tomorrow.
+    /// Used to preview "明日課表" once today's classes are over.
+    var upcomingDay: (label: String, sessions: [TimetableSession])? {
+        let today = Self.appWeekday()
+        for offset in 1...7 {
+            let wd = (today - 1 + offset) % 7 + 1
+            let sessions = timetable.allSessions
+                .filter { $0.weekday == wd }
+                .sorted { (Self.startMinutes($0.periodTime) ?? 0) < (Self.startMinutes($1.periodTime) ?? 0) }
+            guard !sessions.isEmpty else { continue }
+            return (offset == 1 ? "明日課表" : "下次上課・\(Self.weekdayName(wd))", sessions)
+        }
+        return nil
+    }
+
+    private static func weekdayName(_ wd: Int) -> String {
+        let names = ["一", "二", "三", "四", "五", "六", "日"]
+        guard (1...7).contains(wd) else { return "" }
+        return "週\(names[wd - 1])"
+    }
 }
 
 @Observable
@@ -79,12 +98,10 @@ final class HomeMoodleViewModel {
     var isLoading = false
     var loaded = false
 
-    private let service = MoodleService.shared
-
-    func load() async {
+    func load(forceReload: Bool = false) async {
         isLoading = true
         defer { isLoading = false; loaded = true }
-        if let result = try? await service.loadUpcomingDeadlines(limit: 12) {
+        if let result = try? await DataStore.shared.moodleDeadlines(forceReload: forceReload) {
             deadlines = result
         }
     }
@@ -104,6 +121,7 @@ struct HomeView: View {
                 nextClassCard
                 deadlinesSection
                 todaySection
+                tomorrowSection
                 if let error = vm.errorMessage, vm.timetable.isEmpty {
                     Text(error).font(.caption).foregroundStyle(.secondary)
                 }
@@ -113,8 +131,8 @@ struct HomeView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("首頁")
         .refreshable {
-            await vm.load(studentId: appState.studentInfo.studentId)
-            await moodle.load()
+            await vm.load(studentId: appState.studentInfo.studentId, forceReload: true)
+            await moodle.load(forceReload: true)
         }
         .task { if vm.timetable.isEmpty { await vm.load(studentId: appState.studentInfo.studentId) } }
         .task { if !moodle.loaded { await moodle.load() } }
@@ -283,6 +301,33 @@ struct HomeView: View {
                         HStack(spacing: 12) {
                             Rectangle()
                                 .fill(Theme.courseColor(for: s.courseName))
+                                .frame(width: 4).clipShape(Capsule())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.courseName).font(.subheadline.bold())
+                                Text("\(s.periodTime)　\(s.classroom)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("第\(s.periodName)節")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Previews the next class day once today's classes are done.
+    @ViewBuilder
+    private var tomorrowSection: some View {
+        if vm.nextSession == nil, let up = vm.upcomingDay {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(up.label).font(.headline).padding(.leading, 4)
+                ForEach(up.sessions) { s in
+                    Card {
+                        HStack(spacing: 12) {
+                            Rectangle()
+                                .fill(Theme.courseColor(for: s.courseName).opacity(0.6))
                                 .frame(width: 4).clipShape(Capsule())
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(s.courseName).font(.subheadline.bold())

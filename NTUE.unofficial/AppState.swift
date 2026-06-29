@@ -38,6 +38,7 @@ final class AppState {
 
     func logout() {
         auth.logout()
+        DataStore.shared.clear()
         KeychainHelper.delete(key: "ntue_password")
         studentInfo = StudentInfo()
         phase = .loggedOut
@@ -63,6 +64,10 @@ final class AppState {
 
     private func refreshStudentInfo() async {
         let info = await service.loadStudentInfo()
-        if !info.isEmpty { studentInfo = info }
+        if !info.isEmpty {
+            studentInfo = info
+            // Warm the slow school pages in the background so screens open fast.
+            DataStore.shared.prefetch(studentId: info.studentId)
+        }
     }
 }

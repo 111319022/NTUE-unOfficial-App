@@ -12,11 +12,18 @@ final class GradesViewModel {
 
     private let service = NTUEService.shared
 
-    func load(_ selection: SemesterSelection? = nil) async {
+    func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
-            let page = try await service.loadGrades(for: selection)
+            // Default semester is prefetched/shared via DataStore; a semester
+            // switch fetches fresh.
+            let page: NTUEService.GradesPage
+            if selection == nil {
+                page = try await DataStore.shared.grades(forceReload: forceReload)
+            } else {
+                page = try await service.loadGrades(for: selection)
+            }
             grades = page.grades
             if !page.student.isEmpty { student = page.student }
             if !page.semesters.isEmpty { semesters = page.semesters }
@@ -77,7 +84,7 @@ struct GradesView: View {
             .padding(16)
         }
         .background(Color(.systemGroupedBackground))
-        .refreshable { await vm.load(vm.selected) }
+        .refreshable { await vm.load(vm.selected, forceReload: true) }
         .overlay(alignment: .top) {
             if vm.isLoading { ProgressView().padding(8) }
         }

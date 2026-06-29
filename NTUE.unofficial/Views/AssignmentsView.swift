@@ -7,13 +7,11 @@ final class AssignmentsViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    private let service = MoodleService.shared
-
-    func load() async {
+    func load(forceReload: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
-            courses = try await service.loadCourseAssignments()
+            courses = try await DataStore.shared.moodleAssignments(forceReload: forceReload)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -48,7 +46,7 @@ struct AssignmentsView: View {
         }
         .navigationTitle("作業")
         .task { if vm.courses.isEmpty { await vm.load() } }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.load(forceReload: true) }
         .sheet(item: $sheet) { d in NTUEWebSheet(url: d.url, title: d.title) }
     }
 
