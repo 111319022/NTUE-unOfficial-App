@@ -99,6 +99,25 @@ enum NTUETerm {
         return SemesterSelection(year: "\(currentAcademicYear(date))", semester: sem)
     }
 
+    /// The next semester after the current one — the term 選課/預排 targets.
+    /// 上學期 → 下學期 same 學年; 下學期 → next 學年 上學期.
+    static func upcomingSemester(asOf date: Date = Date()) -> SemesterSelection {
+        let cur = currentSemester(asOf: date)
+        if cur.semester == "1" {
+            return SemesterSelection(year: cur.year, semester: "2")
+        }
+        let nextYear = (Int(cur.year) ?? currentAcademicYear(date)) + 1
+        return SemesterSelection(year: "\(nextYear)", semester: "1")
+    }
+
+    /// Drops semesters newer than the upcoming (選課) term — keeps past + current
+    /// + the one term being selected, so 預排 can show the upcoming semester while
+    /// still hiding the empty far-future terms the page's <select> also lists.
+    static func upToUpcoming(_ list: [SemesterSelection], asOf date: Date = Date()) -> [SemesterSelection] {
+        let up = upcomingSemester(asOf: date)
+        return list.filter { ($0.year, $0.semester) <= (up.year, up.semester) }
+    }
+
     /// Drops semesters in the future — a term only appears once it has begun.
     static func upToCurrent(_ list: [SemesterSelection], asOf date: Date = Date()) -> [SemesterSelection] {
         let cur = currentSemester(asOf: date)

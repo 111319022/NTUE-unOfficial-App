@@ -229,6 +229,38 @@ enum NTUEParser {
         }
     }
 
+    // MARK: - Course selection (選課查詢 b04250)
+
+    /// Parses the selected-course rows for a 選課 stage from the b04250 data island.
+    static func selectedCourses(from html: String) -> [SelectedCourse] {
+        // Stage tabs render several DataTables (志願登記 + 一般登記), each its own
+        // data island — concatenate them all, not just the first.
+        let rows = allJsonDataIslands(in: html)
+        return rows.compactMap { row in
+            let no = str(row["SemesterCourseNo"])
+            let name = cleanText(str(row["SemesterCourseName"]))
+            guard !no.isEmpty || !name.isEmpty else { return nil }
+            return SelectedCourse(
+                courseNo: no,
+                name: name,
+                classType: cleanText(str(row["ClassTypeName"])),
+                studyClass: cleanText(str(row["StudyClassName"])),
+                department: cleanText(str(row["StudyCourseCategoryNames"])),
+                teacher: cleanText(str(row["Teacher"])),
+                classTimeRaw: cleanText(str(row["ClassTime"])),
+                classroom: cleanText(str(row["location_name"])),
+                credit: cleanText(str(row["Credit"])),
+                needPay: cleanText(str(row["NeedPay"])),
+                memo: cleanText(str(row["Memo"])),
+                isStop: str(row["IsStop"]).contains("是"),
+                regState: cleanText(str(row["RegState"])),
+                regMemo: cleanText(str(row["RegMemo"])),
+                wishOrder: cleanText(str(row["PowerSeq"])),
+                wishGroup: cleanText(str(row["WishGroupName"]))
+            )
+        }
+    }
+
     // MARK: - Leave records (請假明細)
 
     static func leaveRecords(from html: String) -> [LeaveRecord] {
@@ -359,10 +391,32 @@ enum NTUEParser {
     /// Finds the first `"data":[ … ]` array in the page and parses it into rows.
     /// Bracket matching is string-aware so brackets inside values don't break it.
     static func jsonDataIsland(in html: String) -> [[String: Any]]? {
-        let marker = "\"data\":["
-        guard let markerRange = html.range(of: marker) else { return nil }
-        let start = html.index(before: markerRange.upperBound) // points at '['
+        guard let markerRange = html.range(of: "\"data\":[") else { return nil }
+        return parseIsland(in: html, openBracket: html.index(before: markerRange.upperBound))?.rows
+    }
 
+    /// Returns the rows of **every** `"data":[ … ]` array on the page, concatenated
+    /// in document order. Some pages (e.g. the 選課查詢 stage tabs) render several
+    /// DataTables, so a single-island parse would miss courses.
+    static func allJsonDataIslands(in html: String) -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        var searchStart = html.startIndex
+        while let markerRange = html.range(of: "\"data\":[", range: searchStart..<html.endIndex) {
+            let open = html.index(before: markerRange.upperBound)
+            guard let parsed = parseIsland(in: html, openBracket: open) else {
+                searchStart = markerRange.upperBound
+                continue
+            }
+            out.append(contentsOf: parsed.rows)
+            searchStart = parsed.end
+        }
+        return out
+    }
+
+    /// String-aware bracket matching from an opening `[` to its match, parsing the
+    /// JSON array of objects in between. Returns the rows and the index past `]`.
+    private static func parseIsland(in html: String, openBracket start: String.Index)
+        -> (rows: [[String: Any]], end: String.Index)? {
         var depth = 0
         var inString = false
         var escaped = false
@@ -390,7 +444,7 @@ enum NTUEParser {
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             return nil
         }
-        return parsed
+        return (parsed, end)
     }
 
     // MARK: - Small helpers

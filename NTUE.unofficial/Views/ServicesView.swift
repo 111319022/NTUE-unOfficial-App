@@ -37,6 +37,10 @@ struct ServicesView: View {
                 serviceLink("公開課表查詢", "magnifyingglass", Theme.iconMaroon) { PublicScheduleView() }
             }
 
+            Section("線上選課") {
+                serviceLink("選課結果", "calendar.badge.plus", Theme.iconMaroon) { PreScheduleView() }
+            }
+
             Section("學生事務") {
                 serviceLink("請假 / 缺曠", "list.bullet.clipboard", Theme.iconAmber) { AttendanceView() }
                 serviceLink("請假申請", "square.and.pencil", Theme.iconAmber) { LeaveApplyView() }

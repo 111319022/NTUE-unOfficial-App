@@ -24,6 +24,7 @@ struct NTUEService {
     private static let leaveURL = "\(NTUEClient.base)/f01/f01141"
     private static let enrollmentURL = "\(NTUEClient.base)/a02/a02280"
     private static let publicScheduleURL = "\(NTUEClient.base)/b09/b09120"
+    private static let courseSelectionURL = "\(NTUEClient.base)/b04/b04250"
     private static let absenceURL = "\(NTUEClient.base)/b11/b11170"
     private static let conductURL = "\(NTUEClient.base)/f02/f02192"
     private static let rewardURL = "\(NTUEClient.base)/f02/f021b0"
@@ -115,6 +116,39 @@ struct NTUEService {
         let timetable = NTUEParser.timetable(from: gridHTML)
 
         return SchedulePage(timetable: timetable, semesters: semesters, selected: target)
+    }
+
+    // MARK: - Course selection (選課查詢 → 預排)
+
+    struct CourseSelectionPage {
+        var courses: [SelectedCourse]
+        var semesters: [SemesterSelection]
+        var selected: SemesterSelection?
+    }
+
+    /// Loads the courses selected at a given 選課 stage for the target (or the
+    /// school's default — usually the upcoming) semester. The page GET yields the
+    /// CSRF token + semester options; the stage tab is then POSTed with
+    /// `event=search`, returning that stage's data island.
+    func loadCourseSelection(stage: SelectionStage,
+                             for selection: SemesterSelection? = nil) async throws -> CourseSelectionPage {
+        let page = try await client.get(Self.courseSelectionURL)
+        guard let token = NTUEParser.csrfToken(from: page) else { throw NTUEServiceError.noToken }
+
+        let (semesters, defaultSel) = NTUEParser.semesterOptions(from: page)
+        guard let target = selection ?? defaultSel else {
+            return CourseSelectionPage(courses: [], semesters: semesters, selected: nil)
+        }
+
+        let response = try await client.post(Self.courseSelectionURL + stage.pathSuffix, form: [
+            "_token": token,
+            "srh[ACADYear][]": target.year,
+            "srh[Semester][]": target.semester,
+            "event": "search",
+        ], referer: Self.courseSelectionURL)
+
+        return CourseSelectionPage(courses: NTUEParser.selectedCourses(from: response),
+                                   semesters: semesters, selected: target)
     }
 
     // MARK: - Leave records (請假明細)
