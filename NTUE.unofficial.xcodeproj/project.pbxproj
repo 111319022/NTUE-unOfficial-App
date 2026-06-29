@@ -7,56 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		FB22353C2FF18BC3003D0B48 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = AA0011223344AA0100000001 /* SwiftSoup */; };
 		AB1000000000000000000021 /* NTUEWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AB1000000000000000000001 /* NTUEWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FB22353C2FF18BC3003D0B48 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = AA0011223344AA0100000001 /* SwiftSoup */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXFileReference section */
-		FB2234D02FF189EA003D0B48 /* NTUE.unofficial.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NTUE.unofficial.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		AB1000000000000000000001 /* NTUEWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NTUEWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-/* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		FB2234D22FF189EA003D0B48 /* NTUE.unofficial */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				AB1000000000000000000031 /* Exceptions */,
-			);
-			path = NTUE.unofficial;
-			sourceTree = "<group>";
+/* Begin PBXContainerItemProxy section */
+		AB1000000000000000000022 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FB2234C82FF189EA003D0B48 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AB1000000000000000000010;
+			remoteInfo = NTUEWidgets;
 		};
-		AB1000000000000000000002 /* NTUEWidgets */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				AB1000000000000000000030 /* Exceptions */,
-			);
-			path = NTUEWidgets;
-			sourceTree = "<group>";
-		};
-		AB1000000000000000000003 /* Shared */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Shared;
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		AB1000000000000000000030 /* Exceptions */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-				NTUEWidgets.entitlements,
-			);
-			target = AB1000000000000000000010 /* NTUEWidgets */;
-		};
-		AB1000000000000000000031 /* Exceptions */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				NTUE.unofficial.entitlements,
-			);
-			target = FB2234CF2FF189EA003D0B48 /* NTUE.unofficial */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		AB1000000000000000000020 /* Embed Foundation Extensions */ = {
@@ -72,19 +35,55 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXFileReference section */
+		AB1000000000000000000001 /* NTUEWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NTUEWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		FB2234D02FF189EA003D0B48 /* NTUE.unofficial.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NTUE.unofficial.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AB1000000000000000000030 /* Exceptions for "NTUEWidgets" folder in "NTUEWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AB1000000000000000000010 /* NTUEWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		AB1000000000000000000002 /* NTUEWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AB1000000000000000000030 /* Exceptions for "NTUEWidgets" folder in "NTUEWidgets" target */,
+			);
+			path = NTUEWidgets;
+			sourceTree = "<group>";
+		};
+		AB1000000000000000000003 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		FB2234D22FF189EA003D0B48 /* NTUE.unofficial */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = NTUE.unofficial;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		AB1000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FB2234CD2FF189EA003D0B48 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				FB22353C2FF18BC3003D0B48 /* SwiftSoup in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		AB1000000000000000000012 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,32 +112,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		FB2234CF2FF189EA003D0B48 /* NTUE.unofficial */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = FB2234DD2FF189EB003D0B48 /* Build configuration list for PBXNativeTarget "NTUE.unofficial" */;
-			buildPhases = (
-				FB2234CC2FF189EA003D0B48 /* Sources */,
-				FB2234CD2FF189EA003D0B48 /* Frameworks */,
-				FB2234CE2FF189EA003D0B48 /* Resources */,
-				AB1000000000000000000020 /* Embed Foundation Extensions */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				AB1000000000000000000023 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				FB2234D22FF189EA003D0B48 /* NTUE.unofficial */,
-				AB1000000000000000000003 /* Shared */,
-			);
-			name = NTUE.unofficial;
-			packageProductDependencies = (
-				AA0011223344AA0100000001 /* SwiftSoup */,
-			);
-			productName = NTUE.unofficial;
-			productReference = FB2234D02FF189EA003D0B48 /* NTUE.unofficial.app */;
-			productType = "com.apple.product-type.application";
-		};
 		AB1000000000000000000010 /* NTUEWidgets */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AB1000000000000000000014 /* Build configuration list for PBXNativeTarget "NTUEWidgets" */;
@@ -162,6 +135,32 @@
 			productReference = AB1000000000000000000001 /* NTUEWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		FB2234CF2FF189EA003D0B48 /* NTUE.unofficial */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FB2234DD2FF189EB003D0B48 /* Build configuration list for PBXNativeTarget "NTUE.unofficial" */;
+			buildPhases = (
+				FB2234CC2FF189EA003D0B48 /* Sources */,
+				FB2234CD2FF189EA003D0B48 /* Frameworks */,
+				FB2234CE2FF189EA003D0B48 /* Resources */,
+				AB1000000000000000000020 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB1000000000000000000023 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AB1000000000000000000003 /* Shared */,
+				FB2234D22FF189EA003D0B48 /* NTUE.unofficial */,
+			);
+			name = NTUE.unofficial;
+			packageProductDependencies = (
+				AA0011223344AA0100000001 /* SwiftSoup */,
+			);
+			productName = NTUE.unofficial;
+			productReference = FB2234D02FF189EA003D0B48 /* NTUE.unofficial.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -172,10 +171,10 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
-					FB2234CF2FF189EA003D0B48 = {
+					AB1000000000000000000010 = {
 						CreatedOnToolsVersion = 26.6;
 					};
-					AB1000000000000000000010 = {
+					FB2234CF2FF189EA003D0B48 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -204,13 +203,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		FB2234CE2FF189EA003D0B48 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		AB1000000000000000000013 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -218,7 +210,31 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FB2234CE2FF189EA003D0B48 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AB1000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FB2234CC2FF189EA003D0B48 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		AB1000000000000000000023 /* PBXTargetDependency */ = {
@@ -228,34 +244,63 @@
 		};
 /* End PBXTargetDependency section */
 
-/* Begin PBXContainerItemProxy section */
-		AB1000000000000000000022 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = FB2234C82FF189EA003D0B48 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = AB1000000000000000000010;
-			remoteInfo = NTUEWidgets;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXSourcesBuildPhase section */
-		FB2234CC2FF189EA003D0B48 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		AB1000000000000000000011 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
-
 /* Begin XCBuildConfiguration section */
+		AB1000000000000000000015 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ANALYZER_NONNULL = YES;
+				CODE_SIGN_ENTITLEMENTS = NTUEWidgets/NTUEWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 45SQT63B67;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = NTUEWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NTUE 小工具";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.rayhsu63.NTUE-unofficial.NTUEWidgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AB1000000000000000000016 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ANALYZER_NONNULL = YES;
+				CODE_SIGN_ENTITLEMENTS = NTUEWidgets/NTUEWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 45SQT63B67;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = NTUEWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NTUE 小工具";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.rayhsu63.NTUE-unofficial.NTUEWidgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		FB2234DB2FF189EB003D0B48 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -383,11 +428,11 @@
 				CODE_SIGN_ENTITLEMENTS = NTUE.unofficial/NTUE.unofficial.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				DEVELOPMENT_TEAM = 45SQT63B67;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = NTUE.unofficial;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -421,11 +466,11 @@
 				CODE_SIGN_ENTITLEMENTS = NTUE.unofficial/NTUE.unofficial.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				DEVELOPMENT_TEAM = 45SQT63B67;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = NTUE.unofficial;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -451,65 +496,18 @@
 			};
 			name = Release;
 		};
-		AB1000000000000000000015 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CLANG_ANALYZER_NONNULL = YES;
-				CODE_SIGN_ENTITLEMENTS = NTUEWidgets/NTUEWidgets.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = 45SQT63B67;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = NTUEWidgets/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "NTUE 小工具";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 0.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.rayhsu63.NTUE-unofficial.NTUEWidgets";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
-		AB1000000000000000000016 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CLANG_ANALYZER_NONNULL = YES;
-				CODE_SIGN_ENTITLEMENTS = NTUEWidgets/NTUEWidgets.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = 45SQT63B67;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = NTUEWidgets/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "NTUE 小工具";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 0.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.rayhsu63.NTUE-unofficial.NTUEWidgets";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		AB1000000000000000000014 /* Build configuration list for PBXNativeTarget "NTUEWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB1000000000000000000015 /* Debug */,
+				AB1000000000000000000016 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FB2234CB2FF189EA003D0B48 /* Build configuration list for PBXProject "NTUE.unofficial" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -524,15 +522,6 @@
 			buildConfigurations = (
 				FB2234DE2FF189EB003D0B48 /* Debug */,
 				FB2234DF2FF189EB003D0B48 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		AB1000000000000000000014 /* Build configuration list for PBXNativeTarget "NTUEWidgets" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				AB1000000000000000000015 /* Debug */,
-				AB1000000000000000000016 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

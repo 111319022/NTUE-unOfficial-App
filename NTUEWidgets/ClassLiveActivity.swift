@@ -67,6 +67,42 @@ struct ClassLiveActivity: Widget {
     }
 }
 
+#if DEBUG
+extension ClassActivityAttributes.ContentState {
+    static let previewInClass = Self(
+        phase: .inClass, courseName: "資料結構", classroom: "B201",
+        pivot: .now.addingTimeInterval(20 * 60),
+        followingCourseName: "演算法", followingClassroom: "B305",
+        followingStart: .now.addingTimeInterval(70 * 60))
+
+    static let previewBeforeNext = Self(
+        phase: .beforeNext, courseName: "線性代數", classroom: "A103",
+        pivot: .now.addingTimeInterval(8 * 60),
+        followingCourseName: "計算機概論", followingClassroom: "A210",
+        followingStart: .now.addingTimeInterval(88 * 60))
+}
+
+#Preview("鎖定畫面", as: .content, using: ClassActivityAttributes(title: "今日課程")) {
+    ClassLiveActivity()
+} contentStates: {
+    ClassActivityAttributes.ContentState.previewInClass
+    ClassActivityAttributes.ContentState.previewBeforeNext
+}
+
+#Preview("靈動島-展開", as: .dynamicIsland(.expanded), using: ClassActivityAttributes(title: "今日課程")) {
+    ClassLiveActivity()
+} contentStates: {
+    ClassActivityAttributes.ContentState.previewInClass
+    ClassActivityAttributes.ContentState.previewBeforeNext
+}
+
+#Preview("靈動島-精簡", as: .dynamicIsland(.compact), using: ClassActivityAttributes(title: "今日課程")) {
+    ClassLiveActivity()
+} contentStates: {
+    ClassActivityAttributes.ContentState.previewInClass
+}
+#endif
+
 private struct LockScreenLiveView: View {
     let state: ClassActivityAttributes.ContentState
 

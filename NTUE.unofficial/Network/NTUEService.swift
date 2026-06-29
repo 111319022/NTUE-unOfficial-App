@@ -260,6 +260,21 @@ struct NTUEService {
         }
     }
 
+    /// Downloads an already-resolved report-server PDF URL — e.g. the
+    /// `window.open` target captured from a page's own print button — using the
+    /// logged-in session, and saves the bytes to a temp file. Used by the
+    /// 修業進度管制 headless flow, where the print button's `setSubmit(this,1,0)`
+    /// can't be replicated as a plain `event=` POST.
+    func downloadReportPDF(from reportURL: String, referer: String, filename: String) async throws -> URL {
+        let data = try await client.getData(reportURL, referer: referer)
+        guard data.starts(with: [0x25, 0x50, 0x44, 0x46]) else {  // "%PDF"
+            throw NTUEServiceError.requestFailed("PDF 產生失敗，請稍後再試")
+        }
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
     // MARK: - Shared report-PDF download
 
     /// Fetches a school-generated report PDF: GET the page for a fresh CSRF

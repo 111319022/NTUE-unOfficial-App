@@ -116,6 +116,18 @@ struct ServicesView: View {
                     Label("關於", systemImage: "info.circle")
                 }
             }
+
+            #if DEBUG
+            Section {
+                NavigationLink {
+                    DevToolsView()
+                } label: {
+                    Label("開發者工具", systemImage: "hammer.fill")
+                }
+            } footer: {
+                Text("僅 Debug 版本顯示:注入測試課表以驗證小工具與課程動態。")
+            }
+            #endif
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background)

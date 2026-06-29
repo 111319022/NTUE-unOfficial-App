@@ -213,3 +213,49 @@ struct CombinedView: View {
         }
     }
 }
+
+// MARK: - Previews
+
+#if DEBUG
+extension ClassEntry {
+    /// A sample moment with a class in progress + a couple of assignments,
+    /// anchored to now so the countdowns animate in the canvas.
+    static let preview: ClassEntry = {
+        let now = Date()
+        func slot(_ n: String, _ r: String, from: Double, to: Double) -> ClassSlot {
+            ClassSlot(courseName: n, classroom: r, instructor: "",
+                      start: now.addingTimeInterval(from * 60),
+                      end: now.addingTimeInterval(to * 60))
+        }
+        let snapshot = WidgetSnapshot(
+            generatedAt: now,
+            classes: [
+                slot("資料結構", "B201", from: -25, to: 20),
+                slot("演算法", "B305", from: 50, to: 110),
+            ],
+            assignments: [
+                AssignmentItem(id: -1, name: "Lab 3 報告", courseName: "資料結構",
+                               due: now.addingTimeInterval(20 * 3600)),
+                AssignmentItem(id: -2, name: "習題 5", courseName: "演算法",
+                               due: now.addingTimeInterval(3 * 24 * 3600)),
+            ])
+        return ClassEntry(date: now, snapshot: snapshot)
+    }()
+}
+
+#Preview("下一節課-Small", as: .systemSmall) {
+    NextClassWidget()
+} timeline: { ClassEntry.preview }
+
+#Preview("待繳作業-Small", as: .systemSmall) {
+    AssignmentsWidget()
+} timeline: { ClassEntry.preview }
+
+#Preview("課程與作業-Medium", as: .systemMedium) {
+    CombinedWidget()
+} timeline: { ClassEntry.preview }
+
+#Preview("下一節課-鎖定矩形", as: .accessoryRectangular) {
+    NextClassWidget()
+} timeline: { ClassEntry.preview }
+#endif
