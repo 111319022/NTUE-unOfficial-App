@@ -91,6 +91,14 @@ struct ScheduleView: View {
                         Task { await pick(id) }
                     }
             }
+            if !vm.timetable.isEmpty {
+                Picker("檢視", selection: $mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
             Group {
                 if vm.isLoading && vm.timetable.isEmpty {
                     ProgressView("載入課表…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -104,27 +112,18 @@ struct ScheduleView: View {
             }
         }
         .navigationTitle("我的課表")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                if !vm.timetable.isEmpty {
-                    Picker("檢視", selection: $mode) {
-                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 140)
-                }
-            }
-        }
+        .navigationBarTitleDisplayMode(.inline)
         .background(Theme.background)
         .task { await initialLoad() }
     }
 
     private func initialLoad() async {
+        guard selectedID.isEmpty else { return }   // run once
         await reload()
-        if loadedID == nil {
-            loadedID = vm.selected?.id ?? ""
-            selectedID = loadedID ?? ""
-        }
+        // Default to the newest semester (current); if that differs from what the
+        // default load returned, the bar's onChange will correct it.
+        selectedID = semesterList.last?.id ?? vm.selected?.id ?? ""
+        loadedID = vm.selected?.id ?? ""
     }
 
     private func pick(_ id: String) async {
