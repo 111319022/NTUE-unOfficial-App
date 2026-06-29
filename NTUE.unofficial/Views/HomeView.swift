@@ -72,15 +72,37 @@ final class HomeViewModel {
     }
 }
 
+@Observable
+@MainActor
+final class HomeMoodleViewModel {
+    var deadlines: [MoodleDeadline] = []
+    var isLoading = false
+    var loaded = false
+
+    private let service = MoodleService.shared
+
+    func load() async {
+        isLoading = true
+        defer { isLoading = false; loaded = true }
+        if let result = try? await service.loadUpcomingDeadlines(limit: 12) {
+            deadlines = result
+        }
+    }
+}
+
 struct HomeView: View {
     @Environment(AppState.self) private var appState
     @State private var vm = HomeViewModel()
+    @State private var moodle = HomeMoodleViewModel()
+    @State private var sheet: WebDestination?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 greeting
+                semesterCountdownCard
                 nextClassCard
+                deadlinesSection
                 todaySection
                 if let error = vm.errorMessage, vm.timetable.isEmpty {
                     Text(error).font(.caption).foregroundStyle(.secondary)
@@ -90,8 +112,13 @@ struct HomeView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("首頁")
-        .refreshable { await vm.load(studentId: appState.studentInfo.studentId) }
+        .refreshable {
+            await vm.load(studentId: appState.studentInfo.studentId)
+            await moodle.load()
+        }
         .task { if vm.timetable.isEmpty { await vm.load(studentId: appState.studentInfo.studentId) } }
+        .task { if !moodle.loaded { await moodle.load() } }
+        .sheet(item: $sheet) { d in NTUEWebSheet(url: d.url, title: d.title) }
     }
 
     // MARK: - Sections
@@ -150,6 +177,99 @@ struct HomeView: View {
                     Text("好好休息一下吧 🎉").font(.subheadline).foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var semesterCountdownCard: some View {
+        switch AcademicCalendar.countdown() {
+        case .during(let term, let daysLeft):
+            Card {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(term.name).font(.caption).foregroundStyle(.secondary)
+                        Text(daysLeft == 0 ? "今天是本學期最後一天" : "本學期還有 \(daysLeft) 天")
+                            .font(.headline)
+                    }
+                    Spacer()
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.title2).foregroundStyle(Theme.accent)
+                }
+            }
+        case .beforeStart(let term, let days):
+            Card {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("距離開學").font(.caption).foregroundStyle(.secondary)
+                        Text(days == 0 ? "今天開學！" : "還有 \(days) 天開學")
+                            .font(.headline)
+                        Text(term.name).font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    Image(systemName: "sun.max.fill")
+                        .font(.title2).foregroundStyle(.orange)
+                }
+            }
+        case .unknown:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var deadlinesSection: some View {
+        if moodle.isLoading && moodle.deadlines.isEmpty {
+            Card {
+                HStack { ProgressView(); Text("載入作業截止…").foregroundStyle(.secondary) }
+            }
+        } else if !moodle.deadlines.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("作業截止").font(.headline).padding(.leading, 4)
+                ForEach(moodle.deadlines) { d in
+                    Button { sheet = WebDestination(url: d.url, title: d.name) } label: {
+                        deadlineCard(d)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } else if moodle.loaded {
+            Card {
+                Label("目前沒有待繳作業 🎉", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline).foregroundStyle(.green)
+            }
+        }
+    }
+
+    private func deadlineCard(_ d: MoodleDeadline) -> some View {
+        Card {
+            HStack(spacing: 12) {
+                Rectangle()
+                    .fill(d.overdue ? Color.red : Theme.courseColor(for: d.courseName))
+                    .frame(width: 4).clipShape(Capsule())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(d.name).font(.subheadline.bold()).foregroundStyle(.primary)
+                    if !d.courseName.isEmpty {
+                        Text(d.courseName).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Pill(text: dueRelative(d.due, overdue: d.overdue),
+                     color: d.overdue ? .red : (isDueSoon(d.due) ? .orange : Theme.accent))
+            }
+        }
+    }
+
+    private func isDueSoon(_ due: Date) -> Bool {
+        due.timeIntervalSinceNow < 2 * 86_400
+    }
+
+    private func dueRelative(_ due: Date, overdue: Bool) -> String {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: due)).day ?? 0
+        if overdue || days < 0 { return "已逾期" }
+        switch days {
+        case 0: return "今天截止"
+        case 1: return "明天截止"
+        default: return "\(days) 天後"
         }
     }
 

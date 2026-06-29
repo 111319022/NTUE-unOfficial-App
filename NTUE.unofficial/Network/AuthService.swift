@@ -27,40 +27,47 @@ struct AuthService {
     private static let sessionCheckURL = "https://nsa.ntue.edu.tw/AstarProxy/IsServiceWorking.aspx"
 
     func login(username: String, password: String) async throws {
-        let state = Int.random(in: 1_000_000_000...9_999_999_999)
+        // iNTUE OIDC client.
+        try await Self.performOIDCLogin(
+            client: client,
+            username: username, password: password,
+            clientId: "alltop", redirectURI: Self.redirectURI
+        )
 
-        // Step 1 – fetch login page
-        let loginPageURL = "\(Self.loginPageBase)?response_type=id_token&client_id=alltop&redirect_uri=\(Self.redirectURI)&state=\(state)"
-        let html = try await client.get(loginPageURL)
-
-        // Parse hidden fields
-        guard let fields = parseLoginForm(html) else {
-            throw AuthError.missingHiddenFields
-        }
-
-        // Step 2 – POST credentials
-        var formData: [String: String] = [
-            "muid": username,
-            "mpassword": password,
-            "response_type": "id_token",
-            "client_id": "alltop",
-            "redirect_uri": Self.redirectURI,
-            "state": "\(state)",
-            "code": fields.code,
-            "oauthServer": fields.oauthServer,
-        ]
-        // Include any extra hidden fields found on the page
-        for (k, v) in fields.extras { formData[k] = v }
-
-        _ = try await client.post(Self.loginPostURL, form: formData, referer: loginPageURL)
-
-        // Step 3 – verify we are *actually* authenticated.
+        // Verify we are *actually* authenticated.
         // NOTE: IsServiceWorking.aspx returns Working=1 even when logged out, so it
         // cannot be used to confirm login. Instead we check that an authenticated
         // page yields real student data.
         if !(await isAuthenticated()) {
             throw AuthError.loginFailed("帳號或密碼錯誤")
         }
+    }
+
+    /// Performs the校園入口網 OpenID Connect login (fetch form → POST credentials).
+    /// Shared by the iNTUE and Moodle clients — they differ only in `clientId`
+    /// and `redirectURI`. Does NOT verify success; the caller checks its own
+    /// authenticated page afterwards.
+    static func performOIDCLogin(client: NTUEClient, username: String, password: String, clientId: String, redirectURI: String) async throws {
+        let state = Int.random(in: 1_000_000_000...9_999_999_999)
+
+        // Step 1 – fetch login page (holds the per-session hidden fields)
+        let loginPageURL = "\(loginPageBase)?response_type=id_token&client_id=\(clientId)&redirect_uri=\(redirectURI)&state=\(state)"
+        let html = try await client.get(loginPageURL)
+        guard let fields = parseLoginForm(html) else { throw AuthError.missingHiddenFields }
+
+        // Step 2 – POST credentials
+        var formData: [String: String] = [
+            "muid": username,
+            "mpassword": password,
+            "response_type": "id_token",
+            "client_id": clientId,
+            "redirect_uri": redirectURI,
+            "state": "\(state)",
+            "code": fields.code,
+            "oauthServer": fields.oauthServer,
+        ]
+        for (k, v) in fields.extras { formData[k] = v }
+        _ = try await client.post(loginPostURL, form: formData, referer: loginPageURL)
     }
 
     /// True only when an authenticated iNTUE page returns real student data.
@@ -82,7 +89,7 @@ struct AuthService {
         let extras: [String: String]
     }
 
-    private func parseLoginForm(_ html: String) -> LoginFormFields? {
+    private static func parseLoginForm(_ html: String) -> LoginFormFields? {
         // Extract hidden input values using simple string parsing (no SwiftSoup needed for login page)
         var code = ""
         var oauthServer = ""
@@ -108,7 +115,7 @@ struct AuthService {
         return LoginFormFields(code: code, oauthServer: oauthServer, extras: extras)
     }
 
-    private func extractInputs(from html: String) -> [(String, String)] {
+    private static func extractInputs(from html: String) -> [(String, String)] {
         var results: [(String, String)] = []
         // Match <input ... name="X" ... value="Y" ...> and variants
         let pattern = #"<input[^>]+>"#
@@ -125,7 +132,7 @@ struct AuthService {
         return results
     }
 
-    private func extractAttr(_ attr: String, from tag: String) -> String? {
+    private static func extractAttr(_ attr: String, from tag: String) -> String? {
         let patterns = [
             "\(attr)=['\"]([^'\"]*)['\"]",
             "\(attr)=([^\\s>]+)",

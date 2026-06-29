@@ -35,7 +35,7 @@ struct MainTabView: View {
                 .tabItem { Label("首頁", systemImage: "house.fill") }
             NavigationStack { ScheduleView() }
                 .tabItem { Label("課表", systemImage: "calendar") }
-            NavigationStack { MoodleAssignmentsView() }
+            NavigationStack { AssignmentsView() }
                 .tabItem { Label("作業", systemImage: "checklist") }
             NavigationStack { ServicesView() }
                 .tabItem { Label("其他服務", systemImage: "square.grid.2x2.fill") }

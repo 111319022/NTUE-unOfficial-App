@@ -69,15 +69,3 @@ struct ServicesView: View {
         }
     }
 }
-
-/// Placeholder for the Moodle assignments tab (第二階段).
-struct MoodleAssignmentsView: View {
-    var body: some View {
-        ContentUnavailableView {
-            Label("作業", systemImage: "checklist")
-        } description: {
-            Text("Moodle 教學平台整合即將推出")
-        }
-        .navigationTitle("作業")
-    }
-}

@@ -2,7 +2,7 @@ import Foundation
 
 /// Thin URLSession wrapper that keeps the iNTUE session cookie and speaks the
 /// site's Laravel/DataTables conventions (CSRF token + JSON data islands).
-final class NTUEClient {
+final class NTUEClient: Sendable {
     static let shared = NTUEClient()
 
     static let base = "https://nsa.ntue.edu.tw"
@@ -41,6 +41,20 @@ final class NTUEClient {
         let (data, response) = try await session.data(for: request)
         try Self.checkStatus(response)
         return Self.decode(data)
+    }
+
+    /// POST a raw JSON body (used by Moodle's `/lib/ajax/service.php`).
+    func postJSON(_ urlString: String, json: Data, referer: String? = nil) async throws -> Data {
+        guard let url = URL(string: urlString) else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        applyCommonHeaders(&request, referer: referer)
+        request.httpBody = json
+        let (data, response) = try await session.data(for: request)
+        try Self.checkStatus(response)
+        return data
     }
 
     /// GET returning raw bytes (used for binary downloads such as PDFs).

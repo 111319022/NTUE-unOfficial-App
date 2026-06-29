@@ -190,25 +190,6 @@ struct NTUEService {
         }
     }
 
-    // MARK: - 修業進度管制 (a04210)
-
-    private static let progressURL = "\(NTUEClient.base)/a04/a04210"
-
-    /// Downloads the official 學生已修習學分檢核表 PDF.
-    func gradCreditCheckPDF(studentId: String) async throws -> URL {
-        try await fetchReportPDF(pageURL: Self.progressURL,
-                                 filename: "修業學分檢核表.pdf") { html in
-            var form: [String: String] = ["event": "print.\(studentId)"]
-            if let v = NTUEParser.optionValue(from: html, selectName: "srh[StudyKind][]") {
-                form["srh[StudyKind][]"] = v
-            }
-            if let v = NTUEParser.optionValue(from: html, selectName: "srh[StudyCourseCategoryID][]") {
-                form["srh[StudyCourseCategoryID][]"] = v
-            }
-            return form
-        }
-    }
-
     // MARK: - Shared report-PDF download
 
     /// Fetches a school-generated report PDF: GET the page for a fresh CSRF

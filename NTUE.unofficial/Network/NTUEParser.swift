@@ -166,21 +166,6 @@ enum NTUEParser {
         return Timetable(periods: periods)
     }
 
-    /// The selected (or first non-empty) option value of a <select>.
-    static func optionValue(from html: String, selectName: String) -> String? {
-        guard let doc = try? SwiftSoup.parse(html),
-              let select = try? doc.select("select[name=\"\(selectName)\"]").first() else { return nil }
-        let options = (try? select.select("option").array()) ?? []
-        var firstNonEmpty: String?
-        for opt in options {
-            let v = (try? opt.attr("value")) ?? ""
-            guard !v.isEmpty, v != "-" else { continue }
-            if firstNonEmpty == nil { firstNonEmpty = v }
-            if opt.hasAttr("selected") { return v }
-        }
-        return firstNonEmpty
-    }
-
     // MARK: - Public schedule (公開課表查詢)
 
     static func publicScheduleOptions(from html: String) -> PublicScheduleOptions {
