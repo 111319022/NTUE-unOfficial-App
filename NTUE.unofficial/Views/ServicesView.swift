@@ -64,11 +64,11 @@ struct ServicesView: View {
             Section("教務") {
                 serviceLink("成績", "chart.bar.doc.horizontal", Theme.iconMaroon) { GradesView() }
                 serviceLink("修業進度管制", "chart.pie.fill", Theme.iconMaroon) { ProgressControlView() }
-                serviceLink("公開課表查詢", "magnifyingglass", Theme.iconMaroon) { PublicScheduleView() }
             }
 
-            Section("線上選課") {
+            Section("選課相關") {
                 serviceLink("選課結果", "calendar.badge.plus", Theme.iconMaroon) { PreScheduleView() }
+                serviceLink("公開課表查詢", "magnifyingglass", Theme.iconMaroon) { PublicScheduleView() }
             }
 
             Section("學生事務") {
