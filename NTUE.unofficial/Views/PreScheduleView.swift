@@ -93,7 +93,7 @@ struct PreScheduleView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     summaryStrip
-                    if vm.schedule.hasConflict { conflictBanner }
+                    if vm.schedule.hasConflict { notSelectedBanner }
                     if vm.schedule.enrolled.isEmpty {
                         Card {
                             Label("此階段沒有選上的課", systemImage: "tray")
@@ -118,8 +118,7 @@ struct PreScheduleView: View {
         HStack(spacing: 10) {
             stat("\(vm.schedule.courseCount)", "選上課程")
             stat(creditText(vm.schedule.totalCredits), "總學分")
-            stat("\(vm.schedule.conflictCourses.count)", "衝堂",
-                 color: vm.schedule.hasConflict ? .red : .secondary)
+            stat("\(vm.schedule.conflictCourses.count)", "未選中")
         }
     }
 
@@ -134,11 +133,13 @@ struct PreScheduleView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var conflictBanner: some View {
+    /// Overlapping times can't survive selection (conflicts are blocked at
+    /// enrolment), so an apparent clash means the course was 未選中, not a 衝堂.
+    private var notSelectedBanner: some View {
         Card {
             VStack(alignment: .leading, spacing: 6) {
-                Label("有時間衝堂", systemImage: "exclamationmark.triangle.fill")
-                    .font(.subheadline.bold()).foregroundStyle(.red)
+                Label("時間重疊,可能未選中", systemImage: "exclamationmark.triangle")
+                    .font(.subheadline.bold()).foregroundStyle(.secondary)
                 Text(vm.schedule.conflictCourses.map(\.name).joined(separator: "、"))
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -148,7 +149,7 @@ struct PreScheduleView: View {
     private var untimedSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("時間另訂 / 密集課程").font(.headline).padding(.leading, 4)
-            ForEach(vm.schedule.untimedCourses) { c in courseCard(c, conflict: false) }
+            ForEach(vm.schedule.untimedCourses) { c in courseCard(c, notSelected: false) }
         }
     }
 
@@ -156,7 +157,7 @@ struct PreScheduleView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("已選上課程").font(.headline).padding(.leading, 4)
             ForEach(vm.schedule.enrolled) { c in
-                courseCard(c, conflict: vm.schedule.conflictCourses.contains(c))
+                courseCard(c, notSelected: vm.schedule.conflictCourses.contains(c))
             }
         }
     }
@@ -186,7 +187,7 @@ struct PreScheduleView: View {
         }
     }
 
-    private func courseCard(_ c: SelectedCourse, conflict: Bool) -> some View {
+    private func courseCard(_ c: SelectedCourse, notSelected: Bool) -> some View {
         Card {
             HStack(alignment: .top, spacing: 12) {
                 Rectangle()
@@ -195,7 +196,7 @@ struct PreScheduleView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text(c.name).font(.subheadline.bold())
-                        if conflict { Pill(text: "衝堂", color: .red) }
+                        if notSelected { Pill(text: "未選中", color: .secondary) }
                     }
                     if !c.teacher.isEmpty {
                         Label(c.teacher, systemImage: "person").font(.caption).foregroundStyle(.secondary)
@@ -247,8 +248,8 @@ struct PreScheduleView: View {
 
 // MARK: - Grid
 
-/// Weekly grid for the 預排, mirroring the real timetable but rendering 衝堂
-/// (multiple courses in one slot) as a stacked, red-bordered cell.
+/// Weekly grid for the 預排, mirroring the real timetable. Overlapping slots
+/// (multiple courses in one cell) are shown neutral as 未選中 rather than 衝堂.
 struct PreScheduleGridView: View {
     let schedule: PreSchedule
 
@@ -299,24 +300,28 @@ struct PreScheduleGridView: View {
                 .fill(Theme.cardBackground)
                 .frame(maxWidth: .infinity, minHeight: 52)
         } else {
-            let conflict = courses.count > 1
-            let color = conflict ? Color.red : Theme.courseColor(for: courses[0].name)
+            // Overlapping slots can't be a real 衝堂 (selection blocks them), so
+            // they're shown neutral — one of the courses is effectively 未選中.
+            let overlap = courses.count > 1
+            let color = overlap ? Color.secondary : Theme.courseColor(for: courses[0].name)
             VStack(spacing: 2) {
                 ForEach(courses) { c in
                     Text(c.name)
                         .font(.system(size: 10, weight: .semibold))
                         .lineLimit(2).minimumScaleFactor(0.7)
                 }
-                if let room = courses.first?.classroom, !room.isEmpty, !conflict {
+                if overlap {
+                    Text("未選中").font(.system(size: 8)).foregroundStyle(.secondary)
+                } else if let room = courses.first?.classroom, !room.isEmpty {
                     Text(room).font(.system(size: 8)).foregroundStyle(.secondary)
                 }
             }
             .padding(4)
             .frame(maxWidth: .infinity, minHeight: 52)
-            .background(color.opacity(conflict ? 0.22 : 0.18))
+            .background(color.opacity(0.18))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(color.opacity(conflict ? 0.9 : 0.5), lineWidth: conflict ? 1.5 : 1)
+                    .stroke(color.opacity(0.5), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
