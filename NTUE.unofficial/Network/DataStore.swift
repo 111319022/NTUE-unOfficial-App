@@ -54,6 +54,7 @@ final class DataStore {
             } else {
                 cachedTimetable = page.timetable
                 Persistence.save(page.timetable, for: .timetable)
+                WidgetBridge.update(timetable: page.timetable, deadlines: cachedDeadlines)
             }
             return page
         } catch {
@@ -95,6 +96,7 @@ final class DataStore {
             } else {
                 cachedDeadlines = result
                 Persistence.save(result, for: .moodleDeadlines)
+                WidgetBridge.update(timetable: cachedTimetable, deadlines: result)
             }
             return result
         } catch {
@@ -169,5 +171,7 @@ final class DataStore {
         cachedAssignments = nil
         cachedAnnouncements = nil
         Persistence.clearAll()
+        WidgetBridge.update(timetable: nil, deadlines: nil)
+        LiveActivityController.shared.end()
     }
 }
