@@ -1,0 +1,201 @@
+import SwiftUI
+
+@Observable
+@MainActor
+final class HomeViewModel {
+    var timetable = Timetable(periods: [])
+    var isLoading = false
+    var errorMessage: String?
+
+    private let service = NTUEService.shared
+
+    func load(studentId: String) async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            let page = try await service.loadTimetable(for: nil, studentId: studentId)
+            timetable = page.timetable
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    /// Apple weekday (1=Sun…7=Sat) → app weekday (1=Mon…7=Sun).
+    private static func appWeekday(_ date: Date = Date()) -> Int {
+        let apple = Calendar.current.component(.weekday, from: date)
+        return apple == 1 ? 7 : apple - 1
+    }
+
+    private static func minutes(of date: Date = Date()) -> Int {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    }
+
+    /// "07:10-08:00" → start minutes (430).
+    private static func startMinutes(_ time: String) -> Int? {
+        guard let first = time.split(separator: "-").first else { return nil }
+        let parts = first.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+        return h * 60 + m
+    }
+
+    private static func endMinutes(_ time: String) -> Int? {
+        let comps = time.split(separator: "-")
+        guard comps.count == 2 else { return nil }
+        let parts = comps[1].split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+        return h * 60 + m
+    }
+
+    var todaySessions: [TimetableSession] {
+        let wd = Self.appWeekday()
+        return timetable.allSessions
+            .filter { $0.weekday == wd }
+            .sorted { (Self.startMinutes($0.periodTime) ?? 0) < (Self.startMinutes($1.periodTime) ?? 0) }
+    }
+
+    /// The next (or current) class today.
+    var nextSession: (session: TimetableSession, inProgress: Bool, minutesUntil: Int)? {
+        let now = Self.minutes()
+        for s in todaySessions {
+            guard let start = Self.startMinutes(s.periodTime) else { continue }
+            let end = Self.endMinutes(s.periodTime) ?? (start + 50)
+            if now >= start && now <= end {
+                return (s, true, 0)
+            }
+            if start > now {
+                return (s, false, start - now)
+            }
+        }
+        return nil
+    }
+}
+
+struct HomeView: View {
+    @Environment(AppState.self) private var appState
+    @State private var vm = HomeViewModel()
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                greeting
+                nextClassCard
+                todaySection
+                if let error = vm.errorMessage, vm.timetable.isEmpty {
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("首頁")
+        .refreshable { await vm.load(studentId: appState.studentInfo.studentId) }
+        .task { if vm.timetable.isEmpty { await vm.load(studentId: appState.studentInfo.studentId) } }
+    }
+
+    // MARK: - Sections
+
+    private var greeting: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(greetingText)
+                    .font(.title2.bold())
+                Text(dateText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private var nextClassCard: some View {
+        Card {
+            if vm.isLoading && vm.timetable.isEmpty {
+                HStack { ProgressView(); Text("載入中…").foregroundStyle(.secondary) }
+            } else if let next = vm.nextSession {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label(next.inProgress ? "目前課程" : "下一堂課", systemImage: "books.vertical.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(Theme.accent)
+                        Spacer()
+                        if next.inProgress {
+                            Pill(text: "進行中", color: .green)
+                        } else if next.minutesUntil < 60 {
+                            Pill(text: "\(next.minutesUntil) 分鐘後", color: .orange)
+                        }
+                    }
+                    Text(next.session.courseName)
+                        .font(.title3.bold())
+                    HStack(spacing: 16) {
+                        Label(next.session.periodTime, systemImage: "clock")
+                        if !next.session.classroom.isEmpty {
+                            Label(next.session.classroom, systemImage: "mappin.and.ellipse")
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    if !next.session.instructor.isEmpty {
+                        Label(next.session.instructor, systemImage: "person")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("今天沒有更多課了", systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                    Text("好好休息一下吧 🎉").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var todaySection: some View {
+        if !vm.todaySessions.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("今日課表").font(.headline).padding(.leading, 4)
+                ForEach(vm.todaySessions) { s in
+                    Card {
+                        HStack(spacing: 12) {
+                            Rectangle()
+                                .fill(Theme.courseColor(for: s.courseName))
+                                .frame(width: 4).clipShape(Capsule())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.courseName).font(.subheadline.bold())
+                                Text("\(s.periodTime)　\(s.classroom)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("第\(s.periodName)節")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let name = appState.studentInfo.name.isEmpty ? "同學" : appState.studentInfo.name
+        let part = switch hour {
+        case 5..<12: "早安"
+        case 12..<18: "午安"
+        default: "晚安"
+        }
+        return "\(part)，\(name)"
+    }
+
+    private var dateText: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "M月d日 EEEE"
+        return f.string(from: Date())
+    }
+}
