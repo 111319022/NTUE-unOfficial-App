@@ -120,6 +120,7 @@ final class HomeMoodleViewModel {
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
+    @AppStorage("use18Week") private var use18Week = false   // re-render countdown when toggled
     @State private var vm = HomeViewModel()
     @State private var moodle = HomeMoodleViewModel()
     @State private var sheet: WebDestination?
@@ -127,9 +128,9 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                greeting
-                semesterCountdownCard
-                nextClassCard
+                header
+                heroCard
+                summaryStrip
                 deadlinesSection
                 todaySection
                 tomorrowSection
@@ -139,7 +140,7 @@ struct HomeView: View {
             }
             .padding(16)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
         .navigationTitle("首頁")
         .refreshable {
             await vm.load(studentId: appState.studentInfo.studentId, forceReload: true)
@@ -152,96 +153,124 @@ struct HomeView: View {
 
     // MARK: - Sections
 
-    private var greeting: some View {
-        HStack {
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(greetingText)
-                    .font(.title2.bold())
-                Text(dateText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Text(greetingText).font(.title2.bold())
+                Text(dateText).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
+            HStack(spacing: 5) {
+                Image(systemName: "calendar")
+                Text(NTUETerm.currentSemester().shortLabel)
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Theme.accentSoft, in: Capsule())
+            .foregroundStyle(Theme.accent)
         }
     }
 
-    private var nextClassCard: some View {
-        Card {
-            if vm.isLoading && vm.timetable.isEmpty {
-                HStack { ProgressView(); Text("載入中…").foregroundStyle(.secondary) }
-            } else if let next = vm.nextSession {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Label(next.inProgress ? "目前課程" : "下一堂課", systemImage: "books.vertical.fill")
-                            .font(.subheadline.bold())
-                            .foregroundStyle(Theme.accent)
-                        Spacer()
-                        if next.inProgress {
-                            Pill(text: "進行中", color: .green)
-                        } else if next.minutesUntil < 60 {
-                            Pill(text: "\(next.minutesUntil) 分鐘後", color: .orange)
-                        }
-                    }
-                    Text(next.session.courseName)
-                        .font(.title3.bold())
-                    HStack(spacing: 16) {
-                        Label(next.session.periodTime, systemImage: "clock")
-                        if !next.session.classroom.isEmpty {
-                            Label(next.session.classroom, systemImage: "mappin.and.ellipse")
-                        }
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    if !next.session.instructor.isEmpty {
-                        Label(next.session.instructor, systemImage: "person")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } else {
+    // MARK: Hero — 現在 / 接下來
+
+    /// True between terms (summer/winter break) per the academic calendar.
+    private var breakInfo: (inBreak: Bool, days: Int) {
+        if case .beforeStart(_, let days) = AcademicCalendar.countdown() { return (true, days) }
+        return (false, 0)
+    }
+
+    @ViewBuilder
+    private var heroCard: some View {
+        if breakInfo.inBreak {
+            heroShell(background: Theme.cardBackground) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("今天沒有更多課了", systemImage: "checkmark.circle.fill")
-                        .font(.headline)
-                        .foregroundStyle(.green)
-                    Text("好好休息一下吧 🎉").font(.subheadline).foregroundStyle(.secondary)
+                    Label("假期中 🌴", systemImage: "sun.max")
+                        .font(.headline).foregroundStyle(Theme.accent)
+                    Text(breakInfo.days > 0 ? "距離開學還有 \(breakInfo.days) 天" : "新學期即將開始")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
+        } else if vm.isLoading && vm.timetable.isEmpty {
+            heroShell(background: Theme.accentFill) {
+                HStack { ProgressView().tint(.white); Text("載入課表…").foregroundStyle(.white.opacity(0.9)) }
+            }
+        } else if let next = vm.nextSession {
+            heroShell(background: Theme.accentFill) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label(next.inProgress ? "目前課程" : "下一堂課", systemImage: "clock")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.9))
+                        Spacer()
+                        Text(next.inProgress ? "進行中" : (next.minutesUntil < 60 ? "\(next.minutesUntil) 分鐘後" : "稍後"))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(.white.opacity(0.2), in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    Text(next.session.courseName).font(.title2.bold()).foregroundStyle(.white)
+                    Text(heroDetail(next.session)).font(.subheadline).foregroundStyle(.white.opacity(0.9))
+                }
+            }
+        } else if let up = vm.upcomingDay, let first = up.sessions.first {
+            heroShell(background: Theme.cardBackground) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("今天的課都上完了 🎉", systemImage: "checkmark.circle.fill")
+                        .font(.headline).foregroundStyle(Theme.accent)
+                    Text("\(up.label)・\(first.periodTime) \(first.courseName)")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            heroShell(background: Theme.cardBackground) {
+                Label("今天沒有課，好好休息 🎉", systemImage: "sun.max")
+                    .font(.headline).foregroundStyle(Theme.accent)
+            }
+        }
+    }
+
+    private func heroShell<Content: View>(background: Color, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func heroDetail(_ s: TimetableSession) -> String {
+        [s.periodTime, s.classroom, s.instructor].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    // MARK: Summary strip
+
+    private var summaryStrip: some View {
+        HStack(spacing: 10) {
+            statCard(breakInfo.inBreak ? "0" : "\(vm.todaySessions.count)", "今日課程", color: .primary)
+            statCard("\(moodle.deadlines.count)", "待繳作業",
+                     color: moodle.deadlines.isEmpty ? .secondary : Theme.amber)
+            countdownStat
         }
     }
 
     @ViewBuilder
-    private var semesterCountdownCard: some View {
+    private var countdownStat: some View {
         switch AcademicCalendar.countdown() {
-        case .during(let term, let daysLeft):
-            Card {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(term.name).font(.caption).foregroundStyle(.secondary)
-                        Text(daysLeft == 0 ? "今天是本學期最後一天" : "本學期還有 \(daysLeft) 天")
-                            .font(.headline)
-                    }
-                    Spacer()
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.title2).foregroundStyle(Theme.accent)
-                }
-            }
-        case .beforeStart(let term, let days):
-            Card {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("距離開學").font(.caption).foregroundStyle(.secondary)
-                        Text(days == 0 ? "今天開學！" : "還有 \(days) 天開學")
-                            .font(.headline)
-                        Text(term.name).font(.caption2).foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    Image(systemName: "sun.max.fill")
-                        .font(.title2).foregroundStyle(.orange)
-                }
-            }
-        case .unknown:
-            EmptyView()
+        case .during(_, let daysLeft): statCard("\(daysLeft)", "本學期剩天", color: Theme.accent)
+        case .beforeStart(_, let days): statCard("\(days)", "距開學天", color: Theme.accent)
+        case .unknown: statCard("—", "學期", color: .secondary)
         }
+    }
+
+    private func statCard(_ value: String, _ label: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value).font(.title2.bold()).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
@@ -282,7 +311,7 @@ struct HomeView: View {
                 }
                 Spacer(minLength: 8)
                 Pill(text: dueRelative(d.due, overdue: d.overdue),
-                     color: d.overdue ? .red : (isDueSoon(d.due) ? .orange : Theme.accent))
+                     color: d.overdue ? .red : (isDueSoon(d.due) ? Theme.amber : Theme.accent))
             }
         }
     }
@@ -304,7 +333,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var todaySection: some View {
-        if !vm.todaySessions.isEmpty {
+        if !breakInfo.inBreak, !vm.todaySessions.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("今日課表").font(.headline).padding(.leading, 4)
                 ForEach(vm.todaySessions) { s in
@@ -331,7 +360,7 @@ struct HomeView: View {
     /// Previews the next class day once today's classes are done.
     @ViewBuilder
     private var tomorrowSection: some View {
-        if vm.nextSession == nil, let up = vm.upcomingDay {
+        if !breakInfo.inBreak, vm.nextSession == nil, let up = vm.upcomingDay {
             VStack(alignment: .leading, spacing: 10) {
                 Text(up.label).font(.headline).padding(.leading, 4)
                 ForEach(up.sessions) { s in

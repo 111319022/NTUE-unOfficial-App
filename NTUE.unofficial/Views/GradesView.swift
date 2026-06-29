@@ -11,27 +11,34 @@ final class GradesViewModel {
     var errorMessage: String?
 
     private let service = NTUEService.shared
+    private var cache: [String: NTUEService.GradesPage] = [:]   // keyed by semester id
 
     func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        let key = selection?.id ?? "default"
+        if !forceReload, let cached = cache[key] { apply(cached); return }   // instant re-visit
+
         isLoading = true
         errorMessage = nil
         do {
             // Default semester is prefetched/shared via DataStore; a semester
             // switch fetches fresh.
-            let page: NTUEService.GradesPage
-            if selection == nil {
-                page = try await DataStore.shared.grades(forceReload: forceReload)
-            } else {
-                page = try await service.loadGrades(for: selection)
-            }
-            grades = page.grades
-            if !page.student.isEmpty { student = page.student }
-            if !page.semesters.isEmpty { semesters = page.semesters }
-            selected = page.selected
+            let page = selection == nil
+                ? try await DataStore.shared.grades(forceReload: forceReload)
+                : try await service.loadGrades(for: selection)
+            cache[key] = page
+            if let id = page.selected?.id { cache[id] = page }
+            apply(page)
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func apply(_ page: NTUEService.GradesPage) {
+        grades = page.grades
+        if !page.student.isEmpty { student = page.student }
+        if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }   // never shrink
+        selected = page.selected
     }
 
     // Summary stats (only courses that actually carry a numeric score).
@@ -54,28 +61,73 @@ final class GradesViewModel {
 }
 
 struct GradesView: View {
+    @Environment(AppState.self) private var appState
     @State private var vm = GradesViewModel()
+    @State private var transcriptVM = TranscriptViewModel()
+    @State private var selectedID = ""
+    @State private var loadedID: String?
 
-    var body: some View {
-        Group {
-            if vm.isLoading && vm.grades.isEmpty {
-                ProgressView("載入成績…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = vm.errorMessage, vm.grades.isEmpty {
-                errorState(error)
-            } else if vm.grades.isEmpty {
-                ContentUnavailableView("此學期沒有成績", systemImage: "doc.text.magnifyingglass")
-            } else {
-                content
-            }
-        }
-        .navigationTitle("學期成績")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { semesterMenu }
-        .background(Color(.systemGroupedBackground))
-        .task { if vm.grades.isEmpty { await vm.load() } }
+    private static let allID = "all"
+
+    /// The student's enrolled span (by 年級); falls back to the server list.
+    private var semesterList: [SemesterSelection] {
+        let base = appState.studentInfo.gradeLevel.map { NTUETerm.enrolledSemesters(grade: $0) } ?? vm.semesters
+        return NTUETerm.upToCurrent(base)
     }
 
+    private var options: [SemesterOption] {
+        [SemesterOption(id: Self.allID, label: "歷年總表")] + semesterList.map(\.option)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !options.isEmpty && !selectedID.isEmpty {
+                SemesterBar(options: options, selectedID: $selectedID)
+                    .onChange(of: selectedID) { _, id in
+                        guard id != loadedID else { return }
+                        Task { await select(id) }
+                    }
+            }
+            content
+        }
+        .navigationTitle("成績")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.background)
+        .task { await initialLoad() }
+    }
+
+    private func initialLoad() async {
+        guard loadedID == nil else { return }
+        await vm.load()
+        loadedID = vm.selected?.id ?? ""
+        selectedID = loadedID ?? ""
+    }
+
+    private func select(_ id: String) async {
+        loadedID = id
+        if id == Self.allID {
+            await transcriptVM.load()   // loads every semester once
+        } else if let sem = semesterList.first(where: { $0.id == id }) {
+            await vm.load(sem)
+        }
+    }
+
+    @ViewBuilder
     private var content: some View {
+        if selectedID == Self.allID {
+            TranscriptContent(vm: transcriptVM)
+        } else if vm.isLoading && vm.grades.isEmpty {
+            ProgressView("載入成績…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = vm.errorMessage, vm.grades.isEmpty {
+            errorState(error)
+        } else if vm.grades.isEmpty {
+            ContentUnavailableView("此學期沒有成績", systemImage: "doc.text.magnifyingglass")
+        } else {
+            semesterContent
+        }
+    }
+
+    private var semesterContent: some View {
         ScrollView {
             VStack(spacing: 16) {
                 summaryCard
@@ -83,7 +135,7 @@ struct GradesView: View {
             }
             .padding(16)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
         .refreshable { await vm.load(vm.selected, forceReload: true) }
         .overlay(alignment: .top) {
             if vm.isLoading { ProgressView().padding(8) }
@@ -136,29 +188,6 @@ struct GradesView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var semesterMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            if !vm.semesters.isEmpty {
-                Menu {
-                    ForEach(vm.semesters) { sem in
-                        Button {
-                            Task { await vm.load(sem) }
-                        } label: {
-                            if sem.id == vm.selected?.id {
-                                Label(sem.shortLabel, systemImage: "checkmark")
-                            } else {
-                                Text(sem.shortLabel)
-                            }
-                        }
-                    }
-                } label: {
-                    Label(vm.selected?.shortLabel ?? "學期", systemImage: "calendar")
-                        .font(.subheadline)
-                }
-            }
-        }
-    }
 }
 
 struct GradeCard: View {

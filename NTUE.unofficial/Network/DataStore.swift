@@ -18,8 +18,8 @@ final class DataStore {
     private var timetableTask: Task<NTUEService.SchedulePage, Error>?
     private var gradesTask: Task<NTUEService.GradesPage, Error>?
     private var deadlinesTask: Task<[MoodleDeadline], Error>?
-    private var assignmentsTask: Task<[MoodleCourseAssignments], Error>?
-    private var announcementsTask: Task<[MoodleAnnouncement], Error>?
+    private var assignmentsTask: Task<MoodleService.AssignmentsPage, Error>?
+    private var announcementsTask: Task<MoodleService.AnnouncementsPage, Error>?
 
     /// Last-known snapshots, hydrated from disk at launch so screens paint
     /// instantly while a fresh fetch runs in the background.
@@ -35,7 +35,10 @@ final class DataStore {
 
     func timetable(studentId: String, forceReload: Bool = false) async throws -> NTUEService.SchedulePage {
         if forceReload { timetableTask = nil }
-        let task = timetableTask ?? Task { try await service.loadTimetable(for: nil, studentId: studentId) }
+        // Use the current academic semester explicitly — in summer the school's
+        // own default drifts to the upcoming (empty) term, which used to leave a
+        // stale timetable on screen.
+        let task = timetableTask ?? Task { try await service.loadTimetable(for: NTUETerm.currentSemester(), studentId: studentId) }
         timetableTask = task
         do {
             let page = try await task.value
@@ -81,15 +84,14 @@ final class DataStore {
         }
     }
 
-    func moodleAssignments(forceReload: Bool = false) async throws -> [MoodleCourseAssignments] {
+    func moodleAssignments(forceReload: Bool = false) async throws -> MoodleService.AssignmentsPage {
         if forceReload { assignmentsTask = nil }
-        if let task = assignmentsTask { return try await awaiting(task) { self.assignmentsTask = nil } }
-        let task = Task { try await MoodleService.shared.loadCourseAssignments() }
+        let task = assignmentsTask ?? Task { try await MoodleService.shared.loadCourseAssignments() }
         assignmentsTask = task
         return try await awaiting(task) { self.assignmentsTask = nil }
     }
 
-    func moodleAnnouncements(forceReload: Bool = false) async throws -> [MoodleAnnouncement] {
+    func moodleAnnouncements(forceReload: Bool = false) async throws -> MoodleService.AnnouncementsPage {
         if forceReload { announcementsTask = nil }
         let task = announcementsTask ?? Task { try await MoodleService.shared.loadAnnouncements() }
         announcementsTask = task

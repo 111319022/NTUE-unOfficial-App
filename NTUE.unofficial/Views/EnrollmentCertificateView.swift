@@ -47,7 +47,7 @@ struct EnrollmentCertificateView: View {
                     }
                     .padding(16)
                 }
-                .background(Color(.systemGroupedBackground))
+                .background(Theme.background)
             }
         }
         .navigationTitle("在學證明")

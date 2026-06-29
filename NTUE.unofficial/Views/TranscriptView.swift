@@ -75,8 +75,9 @@ final class TranscriptViewModel {
 }
 
 /// 歷年成績總表 — every semester's grades aggregated natively, with cumulative GPA.
-struct TranscriptView: View {
-    @State private var vm = TranscriptViewModel()
+/// The 歷年成績 aggregate, embeddable inside the 成績 page (no nav chrome).
+struct TranscriptContent: View {
+    var vm: TranscriptViewModel
 
     var body: some View {
         Group {
@@ -105,10 +106,6 @@ struct TranscriptView: View {
                 }
             }
         }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("歷年成績")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await vm.load() }
     }
 
     private var summaryCard: some View {

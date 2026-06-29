@@ -50,7 +50,7 @@ struct ConductView: View {
                 .refreshable { await vm.load() }
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
         .navigationTitle("操行 / 獎懲")
         .navigationBarTitleDisplayMode(.inline)
         .task { if vm.conduct.isEmpty && vm.rewards.isEmpty { await vm.load() } }

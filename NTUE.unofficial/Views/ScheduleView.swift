@@ -10,12 +10,16 @@ final class ScheduleViewModel {
     var errorMessage: String?
 
     private let service = NTUEService.shared
+    private var cache: [String: Timetable] = [:]   // keyed by semester id
 
     init() {
         if let cached = DataStore.shared.cachedTimetable { timetable = cached }
     }
 
     func load(_ selection: SemesterSelection? = nil, studentId: String, forceReload: Bool = false) async {
+        let key = selection?.id ?? "default"
+        if !forceReload, let cached = cache[key] { timetable = cached; return }   // instant re-visit
+
         isLoading = true
         errorMessage = nil
         do {
@@ -24,13 +28,16 @@ final class ScheduleViewModel {
             let page: NTUEService.SchedulePage
             if selection == nil {
                 page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
-                // Default refresh: don't clobber a good grid with a transient empty.
                 if !page.timetable.isEmpty || timetable.isEmpty { timetable = page.timetable }
             } else {
                 page = try await service.loadTimetable(for: selection, studentId: studentId)
-                timetable = page.timetable   // explicit semester switch: show exactly what came back
+                timetable = page.timetable
             }
-            if !page.semesters.isEmpty { semesters = page.semesters }
+            if !page.timetable.isEmpty {
+                cache[key] = page.timetable
+                if let id = page.selected?.id { cache[id] = page.timetable }
+            }
+            if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }
             selected = page.selected
         } catch {
             errorMessage = error.localizedDescription
@@ -55,24 +62,39 @@ struct ScheduleView: View {
     @Environment(AppState.self) private var appState
     @State private var vm = ScheduleViewModel()
     @State private var mode: Mode = .grid
+    @State private var selectedID = ""
+    @State private var loadedID: String?
 
     enum Mode: String, CaseIterable { case grid = "課表", list = "清單" }
 
+    private var semesterList: [SemesterSelection] {
+        let base = appState.studentInfo.gradeLevel.map { NTUETerm.enrolledSemesters(grade: $0) } ?? vm.semesters
+        return NTUETerm.upToCurrent(base)
+    }
+
     var body: some View {
-        Group {
-            if vm.isLoading && vm.timetable.isEmpty {
-                ProgressView("載入課表…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = vm.errorMessage, vm.timetable.isEmpty {
-                errorState(error)
-            } else if vm.timetable.isEmpty {
-                ContentUnavailableView("此學期沒有課表", systemImage: "calendar.badge.exclamationmark")
-            } else {
-                content
+        VStack(spacing: 0) {
+            if !semesterList.isEmpty && !selectedID.isEmpty {
+                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID)
+                    .onChange(of: selectedID) { _, id in
+                        guard id != loadedID else { return }
+                        Task { await pick(id) }
+                    }
+            }
+            Group {
+                if vm.isLoading && vm.timetable.isEmpty {
+                    ProgressView("載入課表…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = vm.errorMessage, vm.timetable.isEmpty {
+                    errorState(error)
+                } else if vm.timetable.isEmpty {
+                    ContentUnavailableView("此學期沒有課表", systemImage: "calendar.badge.exclamationmark")
+                } else {
+                    content
+                }
             }
         }
         .navigationTitle("我的課表")
         .toolbar {
-            semesterMenu
             ToolbarItem(placement: .topBarLeading) {
                 if !vm.timetable.isEmpty {
                     Picker("檢視", selection: $mode) {
@@ -83,8 +105,21 @@ struct ScheduleView: View {
                 }
             }
         }
-        .background(Color(.systemGroupedBackground))
-        .task { await reload() }
+        .background(Theme.background)
+        .task { await initialLoad() }
+    }
+
+    private func initialLoad() async {
+        await reload()
+        if loadedID == nil {
+            loadedID = vm.selected?.id ?? ""
+            selectedID = loadedID ?? ""
+        }
+    }
+
+    private func pick(_ id: String) async {
+        loadedID = id
+        await reload(semesterList.first { $0.id == id })
     }
 
     private func reload(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
@@ -109,26 +144,6 @@ struct ScheduleView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var semesterMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            if !vm.semesters.isEmpty {
-                Menu {
-                    ForEach(vm.semesters) { sem in
-                        Button {
-                            Task { await reload(sem) }
-                        } label: {
-                            if sem.id == vm.selected?.id {
-                                Label(sem.shortLabel, systemImage: "checkmark")
-                            } else { Text(sem.shortLabel) }
-                        }
-                    }
-                } label: {
-                    Label(vm.selected?.shortLabel ?? "學期", systemImage: "calendar")
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Grid
@@ -209,7 +224,7 @@ struct TimetableGridView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(Theme.cardBackground)
                     .frame(maxWidth: .infinity, minHeight: 52)
             }
         }

@@ -35,7 +35,7 @@ struct SplashView: View {
             ProgressView()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
     }
 }
 

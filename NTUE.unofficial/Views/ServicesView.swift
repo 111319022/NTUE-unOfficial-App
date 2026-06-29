@@ -3,6 +3,7 @@ import SwiftUI
 struct ServicesView: View {
     @Environment(AppState.self) private var appState
     @AppStorage("app_theme") private var themeRaw = AppTheme.system.rawValue
+    @AppStorage("use18Week") private var use18Week = false
     @State private var showOnboarding = false
 
     var body: some View {
@@ -21,22 +22,30 @@ struct ServicesView: View {
                 }
             }
 
+            Section {
+                Toggle(isOn: $use18Week) {
+                    Label("18 週制學期", systemImage: "calendar.badge.clock")
+                }
+                .tint(Theme.accent)
+            } footer: {
+                Text("預設以 16 週(課程結束)計算學期倒數與假期;若你的系所/課程到第 18 週才結束，打開這個。")
+            }
+
             Section("教務") {
-                serviceLink("成績查詢", "chart.bar.doc.horizontal", .blue) { GradesView() }
-                serviceLink("歷年成績", "list.number", .cyan) { TranscriptView() }
-                serviceLink("修業進度管制", "chart.pie.fill", .purple) { ProgressControlView() }
-                serviceLink("公開課表查詢", "magnifyingglass", .teal) { PublicScheduleView() }
+                serviceLink("成績", "chart.bar.doc.horizontal", Theme.iconMaroon) { GradesView() }
+                serviceLink("修業進度管制", "chart.pie.fill", Theme.iconMaroon) { ProgressControlView() }
+                serviceLink("公開課表查詢", "magnifyingglass", Theme.iconMaroon) { PublicScheduleView() }
             }
 
             Section("學生事務") {
-                serviceLink("請假 / 缺曠", "list.bullet.clipboard", .orange) { AttendanceView() }
-                serviceLink("請假申請", "square.and.pencil", .red) { LeaveApplyView() }
-                serviceLink("操行 / 獎懲", "star.circle.fill", .indigo) { ConductView() }
-                serviceLink("在學證明", "checkmark.seal.fill", .green) { EnrollmentCertificateView() }
+                serviceLink("請假 / 缺曠", "list.bullet.clipboard", Theme.iconAmber) { AttendanceView() }
+                serviceLink("請假申請", "square.and.pencil", Theme.iconAmber) { LeaveApplyView() }
+                serviceLink("操行 / 獎懲", "star.circle.fill", Theme.iconAmber) { ConductView() }
+                serviceLink("在學證明", "checkmark.seal.fill", Theme.iconAmber) { EnrollmentCertificateView() }
             }
 
             Section("Moodle 教學平台") {
-                serviceLink("課程公告", "megaphone.fill", .pink) { AnnouncementsView() }
+                serviceLink("課程公告", "megaphone.fill", Theme.iconBlue) { AnnouncementsView() }
             }
 
             Section {
@@ -57,6 +66,8 @@ struct ServicesView: View {
                 Text("本 App 為學生自製，非學校官方出品；資料以 iNTUE 校務系統與 Moodle 教學平台為準。")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
         .navigationTitle("其他服務")
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView { showOnboarding = false }
@@ -73,10 +84,14 @@ struct ServicesView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(appState.studentInfo.name.isEmpty ? appState.username : appState.studentInfo.name)
                     .font(.headline)
-                let detail = [appState.studentInfo.studentId, appState.studentInfo.className]
-                    .filter { !$0.isEmpty }.joined(separator: "　")
-                if !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                if !appState.studentInfo.studentId.isEmpty {
+                    Text(appState.studentInfo.studentId).font(.caption).foregroundStyle(.secondary)
+                }
+                let info = appState.studentInfo
+                let line = [info.department, info.className, info.gradeLabel]
+                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "　")
+                if !line.isEmpty {
+                    Text(line).font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()

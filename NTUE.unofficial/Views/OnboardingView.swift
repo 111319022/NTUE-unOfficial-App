@@ -13,11 +13,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Theme.accent, Theme.accent.opacity(0.75)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            Theme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 skipBar
@@ -35,7 +31,6 @@ struct OnboardingView: View {
             }
             .padding(.bottom, 24)
         }
-        .preferredColorScheme(.dark) // keep white text legible on the maroon gradient
     }
 
     // MARK: - Top bar
@@ -46,7 +41,7 @@ struct OnboardingView: View {
             if page < lastPage {
                 Button("略過") { onFinish() }
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 20)
@@ -64,8 +59,9 @@ struct OnboardingView: View {
         ) {
             Text("學生自製・非官方 App")
                 .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.accent)
                 .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(.white.opacity(0.18), in: Capsule())
+                .background(Theme.accentSoft, in: Capsule())
         }
     }
 
@@ -97,7 +93,8 @@ struct OnboardingView: View {
                 bullet("如顯示內容與官方系統不一致，一律以官方系統為準。")
             }
             .padding(18)
-            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.accent.opacity(0.15), lineWidth: 1))
             .padding(.horizontal, 4)
         }
     }
@@ -110,7 +107,7 @@ struct OnboardingView: View {
         ) {
             Label("帳號密碼只用於登入官方系統，僅保存在這支裝置上。", systemImage: "lock.fill")
                 .font(.footnote)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 24)
         }
@@ -122,16 +119,18 @@ struct OnboardingView: View {
         VStack(spacing: 22) {
             Spacer()
             Image(systemName: icon)
-                .font(.system(size: 64))
-                .foregroundStyle(.white)
+                .font(.system(size: 46))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 96, height: 96)
+                .background(Theme.accentSoft, in: Circle())
             Text(title)
                 .font(.title.bold())
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
             if let subtitle {
                 Text(subtitle)
                     .font(.body)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
             }
@@ -146,12 +145,12 @@ struct OnboardingView: View {
         HStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.accent)
                 .frame(width: 38, height: 38)
-                .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.bold()).foregroundStyle(.white)
-                Text(desc).font(.caption).foregroundStyle(.white.opacity(0.85))
+                Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -161,11 +160,11 @@ struct OnboardingView: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.footnote)
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.accent)
                 .padding(.top, 2)
             Text(text)
                 .font(.subheadline)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -174,7 +173,7 @@ struct OnboardingView: View {
         HStack(spacing: 8) {
             ForEach(0...lastPage, id: \.self) { i in
                 Circle()
-                    .fill(.white.opacity(i == page ? 1 : 0.35))
+                    .fill(i == page ? Theme.accent : Color.secondary.opacity(0.3))
                     .frame(width: 7, height: 7)
             }
         }
@@ -191,9 +190,9 @@ struct OnboardingView: View {
         } label: {
             Text(page == lastPage ? "開始使用" : "下一步")
                 .font(.headline)
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 52)
-                .background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Theme.accentFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(.horizontal, 24)
     }

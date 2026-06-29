@@ -10,19 +10,29 @@ final class LeaveDetailViewModel {
     var errorMessage: String?
 
     private let service = NTUEService.shared
+    private var cache: [String: NTUEService.LeavePage] = [:]
 
-    func load(_ selection: SemesterSelection? = nil) async {
+    func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        let key = selection?.id ?? "default"
+        if !forceReload, let cached = cache[key] { apply(cached); return }
+        records = []          // show the loading state while the slow fetch runs
         isLoading = true
         errorMessage = nil
         do {
             let page = try await service.loadLeaveRecords(for: selection)
-            records = page.records
-            if !page.semesters.isEmpty { semesters = page.semesters }
-            selected = page.selected
+            cache[key] = page
+            if let id = page.selected?.id { cache[id] = page }
+            apply(page)
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func apply(_ page: NTUEService.LeavePage) {
+        records = page.records
+        if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }
+        selected = page.selected
     }
 }
 
@@ -34,42 +44,91 @@ final class AbsenceViewModel {
     var errorMessage: String?
 
     private let service = NTUEService.shared
+    private var cache: [String: [AbsenceRecord]] = [:]
 
-    func load() async {
+    func load(for selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        let key = selection?.id ?? "default"
+        if !forceReload, let cached = cache[key] { records = cached; return }
+        records = []
         isLoading = true
         errorMessage = nil
-        do { records = try await service.loadAbsences() }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            let result = try await service.loadAbsences(for: selection)
+            cache[key] = result
+            records = result
+        } catch { errorMessage = error.localizedDescription }
         isLoading = false
     }
 }
 
 /// Combined 請假 / 缺曠 view — the two attendance-related records in one place.
 struct AttendanceView: View {
+    @Environment(AppState.self) private var appState
     @State private var leaveVM = LeaveDetailViewModel()
     @State private var absenceVM = AbsenceViewModel()
     @State private var mode: Mode = .leave
+    @State private var selectedID = ""
+    @State private var leaveLoadedID: String?
+    @State private var absenceLoadedID: String?
 
     enum Mode: String, CaseIterable { case leave = "請假紀錄", absence = "缺曠紀錄" }
 
+    private var semesterList: [SemesterSelection] {
+        let base = appState.studentInfo.gradeLevel.map { NTUETerm.enrolledSemesters(grade: $0) } ?? leaveVM.semesters
+        return NTUETerm.upToCurrent(base)
+    }
+    private var options: [SemesterOption] { semesterList.map(\.option) }
+    private var currentSemester: SemesterSelection? { semesterList.first { $0.id == selectedID } }
+
     var body: some View {
         VStack(spacing: 0) {
+            if !options.isEmpty && !selectedID.isEmpty {
+                SemesterBar(options: options, selectedID: $selectedID)
+                    .onChange(of: selectedID) { _, _ in Task { await ensureLoaded() } }
+            }
             Picker("", selection: $mode) {
                 ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+            .onChange(of: mode) { _, _ in Task { await ensureLoaded() } }
 
             switch mode {
             case .leave: leaveContent
             case .absence: absenceContent
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
         .navigationTitle("請假 / 缺曠")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if leaveVM.records.isEmpty { await leaveVM.load() } }
+        .task { await initialLoad() }
+    }
+
+    private func initialLoad() async {
+        guard selectedID.isEmpty else { return }
+        await leaveVM.load()                       // default 請假 (the opening tab)
+        selectedID = leaveVM.selected?.id ?? ""
+        leaveLoadedID = selectedID
+        // 缺曠 loads lazily the first time the user opens that tab.
+    }
+
+    /// Loads only the visible tab for the selected semester (lazy + cached),
+    /// so switching waits on one ~8s fetch instead of two.
+    private func ensureLoaded() async {
+        guard !selectedID.isEmpty else { return }
+        switch mode {
+        case .leave:
+            if leaveLoadedID != selectedID {
+                leaveLoadedID = selectedID
+                await leaveVM.load(currentSemester)
+            }
+        case .absence:
+            if absenceLoadedID != selectedID {
+                absenceLoadedID = selectedID
+                await absenceVM.load(for: currentSemester)
+            }
+        }
     }
 
     // MARK: 請假
@@ -97,24 +156,7 @@ struct AttendanceView: View {
                     }
                     .padding(16)
                 }
-                .refreshable { await leaveVM.load(leaveVM.selected) }
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if !leaveVM.semesters.isEmpty {
-                    Menu {
-                        ForEach(leaveVM.semesters) { sem in
-                            Button {
-                                Task { await leaveVM.load(sem) }
-                            } label: {
-                                if sem.id == leaveVM.selected?.id {
-                                    Label(sem.shortLabel, systemImage: "checkmark")
-                                } else { Text(sem.shortLabel) }
-                            }
-                        }
-                    } label: { Label(leaveVM.selected?.shortLabel ?? "學期", systemImage: "calendar") }
-                }
+                .refreshable { await leaveVM.load(currentSemester, forceReload: true) }
             }
         }
     }
@@ -127,7 +169,7 @@ struct AttendanceView: View {
             if absenceVM.isLoading && absenceVM.records.isEmpty {
                 loading("載入缺曠紀錄…")
             } else if let error = absenceVM.errorMessage, absenceVM.records.isEmpty {
-                retry(error) { await absenceVM.load() }
+                retry(error) { await absenceVM.load(for: currentSemester) }
             } else if absenceVM.records.isEmpty {
                 ContentUnavailableView("目前沒有缺曠紀錄", systemImage: "checkmark.seal.fill", description: Text("本學期全勤，繼續保持 🎉"))
             } else {
@@ -137,10 +179,9 @@ struct AttendanceView: View {
                     }
                     .padding(16)
                 }
-                .refreshable { await absenceVM.load() }
+                .refreshable { await absenceVM.load(for: currentSemester, forceReload: true) }
             }
         }
-        .task { if absenceVM.records.isEmpty { await absenceVM.load() } }
     }
 
     // MARK: helpers
@@ -275,7 +316,7 @@ struct LeaveRecordDetailView: View {
             }
             .padding(16)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
         .navigationTitle("請假內容")
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -53,13 +53,17 @@ enum NTUEParser {
                 result.append(SemesterSelection(year: y, semester: s))
             }
         }
-        let selected: SemesterSelection?
+        // Only 上/下學期, ordered oldest → newest.
+        let ordered = SemesterSelection.ordered(result)
+
+        var selected: SemesterSelection?
         if let y = selYear, let s = selSem {
             selected = SemesterSelection(year: y, semester: s)
-        } else {
-            selected = result.last
         }
-        return (result, selected)
+        if let sel = selected, !ordered.contains(sel) { selected = ordered.last }
+        else if selected == nil { selected = ordered.last }
+
+        return (ordered, selected)
     }
 
     // MARK: - Student info
@@ -246,6 +250,19 @@ enum NTUEParser {
     }
 
     // MARK: - 缺曠 / 操行 / 獎懲
+
+    /// The selected semester of a page whose year/semester selects have custom
+    /// names (e.g. 缺曠 uses `srh[ACADYearSrh][]` / `srh[SemesterSrh][]`).
+    static func selectedSemester(from html: String, yearSelect: String, semesterSelect: String) -> SemesterSelection? {
+        guard let doc = try? SwiftSoup.parse(html) else { return nil }
+        func selectedValue(_ name: String) -> String? {
+            guard let select = try? doc.select("select[name=\"\(name)\"]").first(),
+                  let options = try? select.select("option").array() else { return nil }
+            return options.first { $0.hasAttr("selected") }.flatMap { try? $0.attr("value") }
+        }
+        guard let y = selectedValue(yearSelect), let s = selectedValue(semesterSelect) else { return nil }
+        return SemesterSelection(year: y, semester: s)
+    }
 
     static func absenceRecords(from html: String) -> [AbsenceRecord] {
         guard let rows = jsonDataIsland(in: html) else { return [] }

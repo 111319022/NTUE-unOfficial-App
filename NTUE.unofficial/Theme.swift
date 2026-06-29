@@ -1,18 +1,49 @@
 import SwiftUI
 import UIKit
 
-/// Centralised colours & styling. NTUE's brand is a deep maroon/red. Colours
-/// that read poorly on a dark background brighten automatically via `Color(light:dark:)`.
+/// Centralised colours & styling — the "暖調學院" palette: a warm cream canvas,
+/// NTUE maroon as the brand accent, and amber for secondary highlights. Colours
+/// adapt for dark mode via `Color(light:dark:)`.
 enum Theme {
     /// NTUE maroon — deep in light mode, brightened in dark mode so it stays legible.
     static let accent = Color(
-        light: Color(red: 0.62, green: 0.16, blue: 0.18),
+        light: Color(red: 0.56, green: 0.17, blue: 0.17),
         dark:  Color(red: 0.93, green: 0.45, blue: 0.48)
     )
-    /// Tinted background behind the accent (avatars, etc.); a touch stronger in dark.
+    /// Tinted background behind the accent (avatars, hero pills, etc.).
     static let accentSoft = Color(
-        light: Color(red: 0.62, green: 0.16, blue: 0.18).opacity(0.12),
-        dark:  Color(red: 0.93, green: 0.45, blue: 0.48).opacity(0.20)
+        light: Color(red: 0.56, green: 0.17, blue: 0.17).opacity(0.12),
+        dark:  Color(red: 0.93, green: 0.45, blue: 0.48).opacity(0.22)
+    )
+
+    /// Solid maroon for large fills behind WHITE text (hero card, filled buttons).
+    /// Stays deep in both modes — unlike `accent`, which brightens for use as a
+    /// foreground colour on dark surfaces.
+    static let accentFill = Color(
+        light: Color(red: 0.56, green: 0.17, blue: 0.17),
+        dark:  Color(red: 0.66, green: 0.20, blue: 0.23)
+    )
+
+    /// Category icon colours for the 其他服務 list (mode-stable, white glyph on top).
+    static let iconMaroon = Color(red: 0.60, green: 0.17, blue: 0.18)
+    static let iconAmber  = Color(red: 0.82, green: 0.53, blue: 0.13)
+    static let iconBlue   = Color(red: 0.20, green: 0.47, blue: 0.72)
+
+    /// Secondary accent — amber, used for "due soon" / highlights.
+    static let amber = Color(
+        light: Color(red: 0.72, green: 0.46, blue: 0.10),
+        dark:  Color(red: 0.91, green: 0.66, blue: 0.27)
+    )
+
+    /// Warm page canvas (replaces systemGroupedBackground).
+    static let background = Color(
+        light: Color(red: 0.965, green: 0.945, blue: 0.914),
+        dark:  Color(red: 0.102, green: 0.090, blue: 0.078)
+    )
+    /// Card / raised-surface colour (replaces secondarySystemGroupedBackground).
+    static let cardBackground = Color(
+        light: Color(red: 1.0, green: 0.992, blue: 0.976),
+        dark:  Color(red: 0.149, green: 0.133, blue: 0.125)
     )
 
     static func scoreColor(_ score: Double?) -> Color {
@@ -51,7 +82,7 @@ struct Card<Content: View>: View {
         content
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

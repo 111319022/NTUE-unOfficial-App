@@ -158,9 +158,25 @@ struct NTUEService {
 
     // MARK: - 缺曠 / 操行 / 獎懲 (GET serves the current semester inline)
 
-    func loadAbsences() async throws -> [AbsenceRecord] {
-        let html = try await client.get(Self.absenceURL)
-        return NTUEParser.absenceRecords(from: html)
+    /// 缺曠 for the given (or current) semester. The GET already holds the current
+    /// semester; only a switch to another semester needs the (slow) POST.
+    func loadAbsences(for selection: SemesterSelection? = nil) async throws -> [AbsenceRecord] {
+        let page = try await client.get(Self.absenceURL)
+        let current = NTUEParser.selectedSemester(from: page, yearSelect: "srh[ACADYearSrh][]", semesterSelect: "srh[SemesterSrh][]")
+
+        if selection == nil || selection?.id == current?.id {
+            return NTUEParser.absenceRecords(from: page)
+        }
+        guard let token = NTUEParser.csrfToken(from: page), let target = selection else {
+            return NTUEParser.absenceRecords(from: page)
+        }
+        let response = try await client.post(Self.absenceURL, form: [
+            "_token": token,
+            "srh[ACADYearSrh][]": target.year,
+            "srh[SemesterSrh][]": target.semester,
+            "event": "search",
+        ], referer: Self.absenceURL)
+        return NTUEParser.absenceRecords(from: response)
     }
 
     func loadConductRecords() async throws -> [ConductRecord] {

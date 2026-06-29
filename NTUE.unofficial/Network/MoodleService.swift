@@ -23,6 +23,12 @@ actor MoodleService {
     static let shared = MoodleService()
     private let client = NTUEClient.shared
 
+    /// In-flight session establishment, shared so concurrent callers (e.g. the
+    /// 作業/截止/公告 prefetch firing at once) don't each kick off their own
+    /// OIDC login — concurrent logins race on cookies and the portal rejects
+    /// duplicate logins with a 4xx (→ NSURLError -1011).
+    private var sessionTask: Task<String, Error>?
+
     static let base = "https://md.ntue.edu.tw"
     private static let clientId = "kunhpdgx"
     private static let redirectURI = "https://md.ntue.edu.tw/auth/ntue/land.php"
@@ -30,8 +36,16 @@ actor MoodleService {
     // MARK: - Session
 
     /// Ensures a live Moodle session and returns its sesskey, logging in with the
-    /// saved credentials if needed.
+    /// saved credentials if needed. Concurrent callers share one establishment.
     private func ensureSession() async throws -> String {
+        if let task = sessionTask { return try await task.value }
+        let task = Task { try await establishSession() }
+        sessionTask = task
+        defer { sessionTask = nil }   // clear once done so the next call re-validates
+        return try await task.value
+    }
+
+    private func establishSession() async throws -> String {
         if let sk = try? await fetchSesskey() { return sk }
         // Session missing/expired → re-login with the credentials saved at iNTUE login.
         guard let user = KeychainHelper.load(key: "ntue_username"),
@@ -101,16 +115,23 @@ actor MoodleService {
         .sorted { $0.due < $1.due }
     }
 
-    // MARK: - 作業 tab: every assignment per current-semester course
+    // MARK: - 作業 tab: every assignment per course, by semester
 
-    func loadCourseAssignments() async throws -> [MoodleCourseAssignments] {
+    struct AssignmentsPage: Sendable {
+        var courses: [MoodleCourseAssignments]
+        var semesters: [SemesterSelection]
+        var selected: SemesterSelection?
+    }
+
+    func loadCourseAssignments(for selection: SemesterSelection? = nil) async throws -> AssignmentsPage {
         let sk = try await ensureSession()
-        let courses = try await fetchEnrolledCourses(sesskey: sk)
-        let current = currentSemesterCourses(courses)
+        let allCourses = try await fetchEnrolledCourses(sesskey: sk)
+        let semesters = availableSemesters(allCourses)
+        let target = selection ?? semesters.last
+        let scoped = courses(allCourses, in: target)
 
-        // Fetch each course's assignment index concurrently.
-        return try await withThrowingTaskGroup(of: MoodleCourseAssignments.self) { group in
-            for course in current {
+        let result = try await withThrowingTaskGroup(of: MoodleCourseAssignments.self) { group in
+            for course in scoped {
                 group.addTask {
                     let html = (try? await NTUEClient.shared.get("\(Self.base)/mod/assign/index.php?id=\(course.id)")) ?? ""
                     let assignments = MoodleParser.assignments(fromIndex: html)
@@ -120,22 +141,31 @@ actor MoodleService {
             }
             var out: [MoodleCourseAssignments] = []
             for try await item in group { out.append(item) }
-            // Courses with outstanding work first, then by name.
             return out.sorted {
                 if $0.outstandingCount != $1.outstandingCount { return $0.outstandingCount > $1.outstandingCount }
                 return $0.course.displayName < $1.course.displayName
             }
         }
+        return AssignmentsPage(courses: result, semesters: semesters, selected: target)
     }
 
     // MARK: - 課程公告
 
-    func loadAnnouncements() async throws -> [MoodleAnnouncement] {
-        let sk = try await ensureSession()
-        let current = currentSemesterCourses(try await fetchEnrolledCourses(sesskey: sk))
+    struct AnnouncementsPage: Sendable {
+        var announcements: [MoodleAnnouncement]
+        var semesters: [SemesterSelection]
+        var selected: SemesterSelection?
+    }
 
-        return try await withThrowingTaskGroup(of: [MoodleAnnouncement].self) { group in
-            for course in current {
+    func loadAnnouncements(for selection: SemesterSelection? = nil) async throws -> AnnouncementsPage {
+        let sk = try await ensureSession()
+        let allCourses = try await fetchEnrolledCourses(sesskey: sk)
+        let semesters = availableSemesters(allCourses)
+        let target = selection ?? semesters.last
+        let scoped = courses(allCourses, in: target)
+
+        let result = try await withThrowingTaskGroup(of: [MoodleAnnouncement].self) { group in
+            for course in scoped {
                 group.addTask {
                     let courseHTML = (try? await NTUEClient.shared.get("\(Self.base)/course/view.php?id=\(course.id)")) ?? ""
                     guard let forumId = MoodleParser.announcementForumId(fromCoursePage: courseHTML) else { return [] }
@@ -145,9 +175,9 @@ actor MoodleService {
             }
             var out: [MoodleAnnouncement] = []
             for try await items in group { out.append(contentsOf: items) }
-            // Newest first; undated entries sink to the bottom.
             return out.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
         }
+        return AnnouncementsPage(announcements: result, semesters: semesters, selected: target)
     }
 
     private func fetchEnrolledCourses(sesskey: String) async throws -> [MoodleCourse] {
@@ -163,11 +193,19 @@ actor MoodleService {
         }
     }
 
-    /// Keeps only the courses of the most recent semester (highest `1142`-style code).
-    private func currentSemesterCourses(_ courses: [MoodleCourse]) -> [MoodleCourse] {
-        let codes = Set(courses.map(\.semesterCode)).filter { !$0.isEmpty }
-        guard let latest = codes.max() else { return courses }
-        return courses.filter { $0.semesterCode == latest }
+    /// The 上/下學期 present among the enrolled courses (course prefix `1142` →
+    /// 114 學年 第 2 學期), ordered oldest → newest.
+    private func availableSemesters(_ courses: [MoodleCourse]) -> [SemesterSelection] {
+        let codes = Set(courses.map(\.semesterCode)).filter { $0.count == 4 }
+        let sels = codes.map { SemesterSelection(year: String($0.prefix(3)), semester: String($0.suffix(1))) }
+        return SemesterSelection.ordered(sels)
+    }
+
+    /// Courses belonging to the given semester (defaults to all if unknown).
+    private func courses(_ courses: [MoodleCourse], in selection: SemesterSelection?) -> [MoodleCourse] {
+        guard let selection else { return courses }
+        let code = selection.year + selection.semester
+        return courses.filter { $0.semesterCode == code }
     }
 
     // MARK: - Name helpers

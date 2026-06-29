@@ -60,7 +60,7 @@ struct PublicScheduleView: View {
             }
             .padding(16)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.background)
         .navigationTitle("公開課表查詢")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.loadOptions() }
