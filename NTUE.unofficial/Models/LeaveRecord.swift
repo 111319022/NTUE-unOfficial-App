@@ -1,7 +1,7 @@
 import Foundation
 
 /// A submitted leave request (請假明細), decoded from the f01141 JSON island.
-struct LeaveRecord: Identifiable, Hashable {
+struct LeaveRecord: Identifiable, Hashable, Codable {
     let id: String          // StdAbsentID
     let kind: String        // LeaveKindName  事假/病假…
     let reason: String      // LeaveReason

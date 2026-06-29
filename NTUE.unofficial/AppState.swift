@@ -84,6 +84,7 @@ final class AppState {
         if !info.isEmpty {
             persist(info)
             DataStore.shared.prefetch(studentId: info.studentId)
+            Task { await ensureProfileDetails() }
             return
         }
         // Session is dead → try a silent re-login with saved credentials.
@@ -106,11 +107,31 @@ final class AppState {
             persist(info)
             // Warm the slow school pages in the background so screens open fast.
             DataStore.shared.prefetch(studentId: info.studentId)
+            Task { await ensureProfileDetails() }
         }
     }
 
+    /// Reads 系所 + 入學學年 from the 在學證明 (once), so the profile can show
+    /// department + auto-incrementing 年級. Cached in `studentInfo`.
+    private func ensureProfileDetails() async {
+        guard studentInfo.department.isEmpty || studentInfo.enrollmentYear == nil else { return }
+        guard let cert = try? await service.loadEnrollmentCertificate(), !cert.department.isEmpty else { return }
+        var info = studentInfo
+        info.department = cert.department
+        if let year = Int(cert.year), let grade = StudentInfo.gradeNumber(cert.grade) {
+            info.enrollmentYear = year - (grade - 1)   // fixed anchor → 年級 +1 each 8/1
+        }
+        persist(info)
+    }
+
+    /// Persists student info, preserving cert-derived fields (系所/入學學年) that
+    /// the grades-page refresh doesn't carry.
     private func persist(_ info: StudentInfo) {
-        studentInfo = info
-        Persistence.save(info, for: .studentInfo)
+        var merged = info
+        if merged.department.isEmpty { merged.department = studentInfo.department }
+        if merged.className.isEmpty { merged.className = studentInfo.className }
+        if merged.enrollmentYear == nil { merged.enrollmentYear = studentInfo.enrollmentYear }
+        studentInfo = merged
+        Persistence.save(merged, for: .studentInfo)
     }
 }

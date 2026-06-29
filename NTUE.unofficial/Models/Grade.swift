@@ -29,17 +29,35 @@ struct StudentInfo: Equatable, Codable {
     var name: String = ""
     var department: String = ""
     var className: String = ""
+    /// 入學學年 (ROC), the fixed anchor for 年級. Derived from the 在學證明.
+    var enrollmentYear: Int?
 
     var isEmpty: Bool { studentId.isEmpty && name.isEmpty }
 
-    /// 年級 read from the class name, e.g. "數位二甲" → 2.
+    /// Current 年級, auto-incrementing on 8/1 (via `NTUETerm.currentAcademicYear`).
+    /// Prefers the 入學學年 anchor; falls back to parsing the class name.
     var gradeLevel: Int? {
+        if let enrollmentYear {
+            let g = NTUETerm.currentAcademicYear() - enrollmentYear + 1
+            return (1...8).contains(g) ? g : nil
+        }
         let map: [Character: Int] = ["一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7]
         for ch in className where map[ch] != nil { return map[ch] }
         return nil
     }
 
-    var gradeLabel: String? { gradeLevel.map { "\($0) 年級" } }
+    var gradeLabel: String? {
+        guard let g = gradeLevel else { return nil }
+        let cn = ["一", "二", "三", "四", "五", "六", "七"]
+        return (1...4).contains(g) ? "大\(cn[g - 1])" : "\(g) 年級"
+    }
+
+    /// Parses a 年級 string like "二年級" (or "2") → 2.
+    static func gradeNumber(_ text: String) -> Int? {
+        let map: [Character: Int] = ["一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7]
+        for ch in text where map[ch] != nil { return map[ch] }
+        return Int(text.prefix { $0.isNumber })
+    }
 }
 
 /// Academic-year / semester maths for NTUE (民國年; the year rolls on 8/1).
@@ -51,6 +69,13 @@ enum NTUETerm {
         let c = cal.dateComponents([.year, .month], from: date)
         let gregorian = (c.month ?? 1) >= 8 ? (c.year ?? 0) : (c.year ?? 0) - 1
         return gregorian - 1911
+    }
+
+    /// True if the semester has already ended (older than the current one), so
+    /// its data is final and can be cached on disk indefinitely.
+    static func isPast(_ sel: SemesterSelection, asOf date: Date = Date()) -> Bool {
+        let cur = currentSemester(asOf: date)
+        return (sel.year, sel.semester) < (cur.year, cur.semester)
     }
 
     /// The 4-year span of semesters a student of `grade` should see, e.g. a

@@ -1,7 +1,7 @@
 import Foundation
 
 /// 缺曠紀錄 — one row per course (b11170).
-struct AbsenceRecord: Identifiable, Hashable {
+struct AbsenceRecord: Identifiable, Hashable, Codable {
     let id = UUID()
     let courseName: String     // SemesterCourseName
     let teacher: String        // Teacher
@@ -9,6 +9,10 @@ struct AbsenceRecord: Identifiable, Hashable {
     let absentOverTotal: String // SessionTotalHour, e.g. "3/54" (缺曠時數/課程總時數)
     let totalHours: String     // TotalTeacherHour
     let failFlag: String       // Standard 已達零分標準註記
+
+    private enum CodingKeys: String, CodingKey {
+        case courseName, teacher, classGroup, absentOverTotal, totalHours, failFlag
+    }
 
     /// Absent hours parsed from "3/54".
     var absentHours: Int? { Int(absentOverTotal.split(separator: "/").first.map(String.init) ?? "") }

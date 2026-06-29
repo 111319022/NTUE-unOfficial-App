@@ -18,7 +18,14 @@ final class ScheduleViewModel {
 
     func load(_ selection: SemesterSelection? = nil, studentId: String, forceReload: Bool = false) async {
         let key = selection?.id ?? "default"
-        if !forceReload, let cached = cache[key] { timetable = cached; return }   // instant re-visit
+        if !forceReload, let cached = cache[key] { timetable = cached; return }   // memory
+        // Past semesters never change → read the on-disk snapshot, skip the network.
+        if !forceReload, let sel = selection, NTUETerm.isPast(sel),
+           let disk = Persistence.load(Timetable.self, key: "timetable_\(sel.id)"), !disk.isEmpty {
+            cache[key] = disk
+            timetable = disk
+            return
+        }
 
         isLoading = true
         errorMessage = nil
@@ -36,6 +43,9 @@ final class ScheduleViewModel {
             if !page.timetable.isEmpty {
                 cache[key] = page.timetable
                 if let id = page.selected?.id { cache[id] = page.timetable }
+                if let sel = selection, NTUETerm.isPast(sel) {
+                    Persistence.save(page.timetable, key: "timetable_\(sel.id)")
+                }
             }
             if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }
             selected = page.selected

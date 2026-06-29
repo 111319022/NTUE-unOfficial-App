@@ -15,6 +15,13 @@ final class LeaveDetailViewModel {
     func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
         let key = selection?.id ?? "default"
         if !forceReload, let cached = cache[key] { apply(cached); return }
+        // Past semesters are final → use the on-disk snapshot (semesters list is
+        // already populated from the current-semester load).
+        if !forceReload, let sel = selection, NTUETerm.isPast(sel),
+           let disk = Persistence.load([LeaveRecord].self, key: "leave_\(sel.id)") {
+            records = disk
+            return
+        }
         records = []          // show the loading state while the slow fetch runs
         isLoading = true
         errorMessage = nil
@@ -23,6 +30,9 @@ final class LeaveDetailViewModel {
             cache[key] = page
             if let id = page.selected?.id { cache[id] = page }
             apply(page)
+            if let sel = selection, NTUETerm.isPast(sel) {
+                Persistence.save(page.records, key: "leave_\(sel.id)")
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -49,6 +59,11 @@ final class AbsenceViewModel {
     func load(for selection: SemesterSelection? = nil, forceReload: Bool = false) async {
         let key = selection?.id ?? "default"
         if !forceReload, let cached = cache[key] { records = cached; return }
+        if !forceReload, let sel = selection, NTUETerm.isPast(sel),
+           let disk = Persistence.load([AbsenceRecord].self, key: "absence_\(sel.id)") {
+            records = disk
+            return
+        }
         records = []
         isLoading = true
         errorMessage = nil
@@ -56,6 +71,9 @@ final class AbsenceViewModel {
             let result = try await service.loadAbsences(for: selection)
             cache[key] = result
             records = result
+            if let sel = selection, NTUETerm.isPast(sel) {
+                Persistence.save(result, key: "absence_\(sel.id)")
+            }
         } catch { errorMessage = error.localizedDescription }
         isLoading = false
     }
