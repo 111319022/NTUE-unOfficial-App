@@ -28,6 +28,7 @@ struct NTUEService {
     private static let absenceURL = "\(NTUEClient.base)/b11/b11170"
     private static let conductURL = "\(NTUEClient.base)/f02/f02192"
     private static let rewardURL = "\(NTUEClient.base)/f02/f021b0"
+    private static let officerURL = "\(NTUEClient.base)/g01/g01333"
 
     // MARK: - Student profile
 
@@ -213,14 +214,41 @@ struct NTUEService {
         return NTUEParser.absenceRecords(from: response)
     }
 
+    /// 操行成績 — all semesters. The GET only serves the current term; a 全選
+    /// (empty 學年/學期) search returns the full history, newest first.
     func loadConductRecords() async throws -> [ConductRecord] {
-        let html = try await client.get(Self.conductURL)
-        return NTUEParser.conductRecords(from: html)
+        let page = try await client.get(Self.conductURL)
+        guard let token = NTUEParser.csrfToken(from: page) else {
+            return NTUEParser.conductRecords(from: page).sorted { $0.sortKey > $1.sortKey }
+        }
+        let response = try await client.post(Self.conductURL, form: [
+            "_token": token,
+            "srh[ACADYear][]": "",
+            "srh[Semester][]": "",
+            "event": "search",
+        ], referer: Self.conductURL)
+        return NTUEParser.conductRecords(from: response).sorted { $0.sortKey > $1.sortKey }
     }
 
+    /// 獎懲紀錄 — all semesters via the same 全選 search.
     func loadRewardPenalties() async throws -> [RewardPenaltyRecord] {
-        let html = try await client.get(Self.rewardURL)
-        return NTUEParser.rewardPenaltyRecords(from: html)
+        let page = try await client.get(Self.rewardURL)
+        guard let token = NTUEParser.csrfToken(from: page) else {
+            return NTUEParser.rewardPenaltyRecords(from: page).sorted { $0.sortKey > $1.sortKey }
+        }
+        let response = try await client.post(Self.rewardURL, form: [
+            "_token": token,
+            "srh[ACADYear][]": "",
+            "srh[Semester][]": "",
+            "event": "search",
+        ], referer: Self.rewardURL)
+        return NTUEParser.rewardPenaltyRecords(from: response).sorted { $0.sortKey > $1.sortKey }
+    }
+
+    /// 擔任幹部紀錄 (g01333). The GET already lists every appointment.
+    func loadOfficerRecords() async throws -> [OfficerRecord] {
+        let html = try await client.get(Self.officerURL)
+        return NTUEParser.officerRecords(from: html)
     }
 
     // MARK: - Enrollment certificate (在學證明)

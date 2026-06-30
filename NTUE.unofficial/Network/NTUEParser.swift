@@ -349,6 +349,24 @@ enum NTUEParser {
         }
     }
 
+    /// 擔任幹部紀錄 (g01333). One row per appointment.
+    static func officerRecords(from html: String) -> [OfficerRecord] {
+        guard let rows = jsonDataIsland(in: html) else { return [] }
+        return rows.compactMap { row in
+            let team = cleanText(str(row["RepresentName"]))
+            let job = cleanText(str(row["JobName"]))
+            guard !(team.isEmpty && job.isEmpty) else { return nil }
+            return OfficerRecord(
+                team: team,
+                studentId: cleanText(str(row["StudentNo"])),
+                name: cleanText(str(row["ChtName"])),
+                jobTitle: job,
+                startDate: cleanText(str(row["ServeSDate"])),
+                endDate: cleanText(str(row["ServeEDate"]))
+            )
+        }
+    }
+
     // MARK: - Enrollment certificate (在學證明)
 
     /// Parses the a02280 page. Labels (生日 / 科系) repeat across the 中文 and

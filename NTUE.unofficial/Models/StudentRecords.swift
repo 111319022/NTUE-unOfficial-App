@@ -36,6 +36,8 @@ struct ConductRecord: Identifiable, Hashable {
 
     var termLabel: String { "\(year) \(semester)" }
     var hasScore: Bool { !score.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// Sort key: newer terms rank higher (year, then 上/下/暑期/暑假 order).
+    var sortKey: Int { (Int(year) ?? 0) * 10 + RecordTerm.semesterOrder(semester) }
 
     /// (label, count) for each reward/penalty kind with a non-zero count.
     var nonZeroCounts: [(String, String)] {
@@ -58,4 +60,41 @@ struct RewardPenaltyRecord: Identifiable, Hashable {
     var termLabel: String { "\(year) \(semester)" }
     /// Penalties (過/誡) are red; rewards (獎/功) are green.
     var isPenalty: Bool { type.contains("過") || type.contains("誡") }
+    /// Sort key: newer terms rank higher.
+    var sortKey: Int { (Int(year) ?? 0) * 10 + RecordTerm.semesterOrder(semester) }
+}
+
+/// 擔任幹部紀錄 — one row per officer/representative-team appointment (g01333).
+struct OfficerRecord: Identifiable, Hashable {
+    let id = UUID()
+    let team: String       // RepresentName 代表隊/社團名稱
+    let studentId: String  // StudentNo
+    let name: String       // ChtName
+    let jobTitle: String   // JobName 職務名稱
+    let startDate: String  // ServeSDate 起年月
+    let endDate: String    // ServeEDate 迄年月
+
+    /// "起年月 – 迄年月" (omits the dash when one side is missing).
+    var periodLabel: String {
+        let s = startDate.trimmingCharacters(in: .whitespaces)
+        let e = endDate.trimmingCharacters(in: .whitespaces)
+        switch (s.isEmpty, e.isEmpty) {
+        case (false, false): return "\(s) – \(e)"
+        case (false, true): return "\(s) 起"
+        case (true, false): return "至 \(e)"
+        case (true, true): return ""
+        }
+    }
+}
+
+/// Shared semester-ordering helper for record terms.
+enum RecordTerm {
+    /// Chronological order within a year: 上學期 < 下學期 < 暑期 < 暑假.
+    static func semesterOrder(_ semester: String) -> Int {
+        if semester.contains("上") { return 1 }
+        if semester.contains("下") { return 2 }
+        if semester.contains("暑期") { return 3 }
+        if semester.contains("暑") { return 4 }
+        return 0
+    }
 }

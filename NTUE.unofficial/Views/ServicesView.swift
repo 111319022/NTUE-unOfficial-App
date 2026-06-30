@@ -75,6 +75,7 @@ struct ServicesView: View {
                 serviceLink("請假 / 缺曠", "list.bullet.clipboard", Theme.iconAmber) { AttendanceView() }
                 serviceLink("請假申請", "square.and.pencil", Theme.iconAmber) { LeaveApplyView() }
                 serviceLink("操行 / 獎懲", "star.circle.fill", Theme.iconAmber) { ConductView() }
+                serviceLink("幹部紀錄", "person.text.rectangle.fill", Theme.iconAmber) { OfficerView() }
                 serviceLink("在學證明", "checkmark.seal.fill", Theme.iconAmber) { EnrollmentCertificateView() }
             }
 
