@@ -5,9 +5,12 @@ struct ServicesView: View {
     @AppStorage("app_theme") private var themeRaw = AppTheme.system.rawValue
     @AppStorage("use18Week") private var use18Week = false
     @AppStorage("liveActivity_autoStart") private var liveAutoStart = false
+    @AppStorage("notify_assignments") private var notifyEnabled = false
+    @AppStorage("notify_assignments_lead") private var notifyLead = LeadTime.dayAndHours.rawValue
     @State private var showOnboarding = false
     @State private var liveRunning = LiveActivityController.shared.isRunning
     @State private var webLink: WebLink?
+    @State private var isDeveloperVerified = false
 
     var body: some View {
         List {
@@ -59,6 +62,31 @@ struct ServicesView: View {
                 Text("課程動態（Live Activity）")
             } footer: {
                 Text("在鎖定畫面與靈動島顯示目前這節課的下課倒數、以及下一節課何時開始。自動顯示需要你開啟 App 或系統背景刷新時才會更新;若要完全自動每天跳出需要推播伺服器(尚未支援)。")
+            }
+
+            Section {
+                Toggle(isOn: $notifyEnabled) {
+                    Label("作業截止提醒", systemImage: "bell.badge")
+                }
+                .tint(Theme.accent)
+
+                if notifyEnabled {
+                    Picker(selection: $notifyLead) {
+                        ForEach(LeadTime.allCases) { lead in
+                            Text(lead.label).tag(lead.rawValue)
+                        }
+                    } label: {
+                        Label("提醒時間", systemImage: "clock")
+                    }
+                }
+            } header: {
+                Text("作業提醒")
+            } footer: {
+                Text("在作業截止前透過本機通知提醒你;只會排程近期尚未繳交的作業，需要你允許通知權限。")
+            }
+
+            Section("校園資訊") {
+                serviceLink("校園行事曆", "calendar", Theme.iconBlue) { CalendarView() }
             }
 
             Section("教務") {
@@ -118,22 +146,41 @@ struct ServicesView: View {
                 }
             }
 
-            #if DEBUG
-            Section {
-                NavigationLink {
-                    DevToolsView()
-                } label: {
-                    Label("開發者工具", systemImage: "hammer.fill")
+            if isDeveloperVerified {
+                Section {
+                    serviceLink("開發者後台", "hammer.fill", Theme.accent) { DevToolsView() }
                 }
-            } footer: {
-                Text("僅 Debug 版本顯示:注入測試課表以驗證小工具與課程動態。")
             }
-            #endif
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .navigationTitle("其他服務")
-        .onAppear { liveRunning = LiveActivityController.shared.isRunning }
+        .onAppear {
+            liveRunning = LiveActivityController.shared.isRunning
+            // Re-check on every appear so unlocking via 關於 → 作者 (×5) makes the
+            // entry show up as soon as you pop back here.
+            Task {
+                if case .allowed = await DeveloperAccessService.verifyCurrentUserAccess() {
+                    isDeveloperVerified = true
+                }
+            }
+        }
+        .onChange(of: notifyEnabled) { _, on in
+            if on {
+                Task {
+                    if await NotificationManager.shared.requestAuthorization() {
+                        await NotificationManager.shared.refreshFromCache()
+                    } else {
+                        notifyEnabled = false   // permission denied → revert the switch
+                    }
+                }
+            } else {
+                NotificationManager.shared.clearAll()
+            }
+        }
+        .onChange(of: notifyLead) { _, _ in
+            Task { await NotificationManager.shared.refreshFromCache() }
+        }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView { showOnboarding = false }
         }
@@ -210,6 +257,9 @@ private struct WebLink: Identifiable {
 }
 
 struct AboutView: View {
+    @State private var authorTaps = 0
+    @State private var showDevUnlock = false
+
     private var version: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "—"
@@ -238,6 +288,14 @@ struct AboutView: View {
             Section {
                 LabeledContent("版本", value: version)
                 LabeledContent("作者", value: "CHENG RUEI HSU")
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        authorTaps += 1
+                        if authorTaps >= 5 {
+                            authorTaps = 0
+                            showDevUnlock = true
+                        }
+                    }
             }
 
             Section {
@@ -250,5 +308,8 @@ struct AboutView: View {
         .background(Theme.background)
         .navigationTitle("關於")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showDevUnlock) {
+            DevUnlockSheet()
+        }
     }
 }

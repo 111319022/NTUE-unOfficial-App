@@ -1,8 +1,9 @@
 import Foundation
+import CloudKit
 
 /// One academic term. The semester can end at 16 weeks (課程結束) or 18 weeks
 /// (學期結束) depending on the student's programme, so we keep both.
-struct AcademicTerm {
+struct AcademicTerm: Codable, Hashable {
     let code: String        // "1152"
     let name: String        // "115 學年度 第 2 學期"
     let start: Date
@@ -10,16 +11,66 @@ struct AcademicTerm {
     let end18: Date
 }
 
+extension AcademicTerm {
+    /// Build from a CloudKit record; nil if a required field is missing.
+    ///
+    /// CloudKit record type: `AcademicTerm`
+    ///   code   String   — 學期代碼，例：`1151`
+    ///   name   String   — 顯示名稱，例：`115 學年度 第 1 學期`
+    ///   start  Date/Time — 開學日
+    ///   end16  Date/Time — 課程結束（16 週）
+    ///   end18  Date/Time — 學期結束（18 週）
+    init?(record: CKRecord) {
+        guard let code = record["code"] as? String,
+              let name = record["name"] as? String,
+              let start = record["start"] as? Date,
+              let end16 = record["end16"] as? Date,
+              let end18 = record["end18"] as? Date else { return nil }
+        self.init(code: code, name: name, start: start, end16: end16, end18: end18)
+    }
+
+    func apply(to record: CKRecord) {
+        record["code"] = code
+        record["name"] = name
+        record["start"] = start
+        record["end16"] = end16
+        record["end18"] = end18
+    }
+}
+
 /// 學期倒數 source.
 ///
-/// ⚠️ 手動維護：Moodle 的課程 enddate 是被灌水的(顯示到 7/30),不能當學期結束。
-/// 每學期請依「學校行事曆」更新下面的日期即可,App 其他地方會自動跟著算。
+/// The term dates come from CloudKit (公開資料庫，你在 Dashboard 維護),快取在
+/// App Group,離線或尚未設定時 fall back 到下面的 `fallbackTerms`。要更新學期
+/// 日期時,改 CloudKit 即可,不必發新版 App。`fallbackTerms` 只是保底,建議每
+/// 年順手更新一次。
 enum AcademicCalendar {
-    static let terms: [AcademicTerm] = [
+    /// Offline fallback — used until CloudKit has been fetched at least once.
+    static let fallbackTerms: [AcademicTerm] = [
         term("1142", "114 學年度 第 2 學期", start: "2026-02-16", end16: "2026-06-05", end18: "2026-06-19"),
         term("1151", "115 學年度 第 1 學期", start: "2026-09-07", end16: "2026-12-24", end18: "2027-01-08"),
         term("1152", "115 學年度 第 2 學期", start: "2027-02-15", end16: "2027-06-04", end18: "2027-06-18"),
     ]
+
+    /// The terms in effect right now: the cached CloudKit copy if we have one,
+    /// otherwise the built-in fallback.
+    static var terms: [AcademicTerm] {
+        cachedRemoteTerms ?? fallbackTerms
+    }
+
+    // MARK: Remote cache (written by RemoteConfigService)
+
+    static var cachedRemoteTerms: [AcademicTerm]? {
+        guard let data = CloudKitConfig.defaults.data(forKey: CloudKitConfig.CacheKey.terms),
+              let terms = try? JSONDecoder().decode([AcademicTerm].self, from: data),
+              !terms.isEmpty else { return nil }
+        return terms.sorted { $0.start < $1.start }
+    }
+
+    static func cacheRemoteTerms(_ terms: [AcademicTerm]) {
+        guard let data = try? JSONEncoder().encode(terms) else { return }
+        CloudKitConfig.defaults.set(data, forKey: CloudKitConfig.CacheKey.terms)
+    }
 
     /// Whether the user's programme runs 18-week semesters (toggle in 其他服務).
     /// Defaults to 16 weeks.

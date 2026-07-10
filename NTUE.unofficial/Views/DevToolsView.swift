@@ -1,12 +1,15 @@
-#if DEBUG
 import SwiftUI
+import UIKit
 import WidgetKit
 
-/// Developer-only test bench (compiled out of Release builds).
+/// Developer test bench, styled after the sibling TPASS app's developer
+/// dashboard. Access is gated at runtime by the CloudKit whitelist
+/// (`DeveloperAccessService`) rather than `#if DEBUG`, so the developer can reach
+/// it on their own device even in a TestFlight / App Store build.
 ///
 /// The app's widgets and Live Activity have nothing to show outside the
-/// semester, because the real `Timetable` is empty in the summer. This page
-/// injects a synthetic `WidgetSnapshot` — anchored to *now* so a class always
+/// semester, because the real `Timetable` is empty in the summer. The 注入 section
+/// writes a synthetic `WidgetSnapshot` — anchored to *now* so a class always
 /// looks "in progress" — straight into the shared App Group. From there the
 /// widgets and Live Activity run their *real* code paths (`contentState(from:)`,
 /// `remainingToday`, the timeline provider's boundary entries), so this exercises
@@ -15,21 +18,95 @@ struct DevToolsView: View {
     @State private var snapshot = SharedStore.load()
     @State private var liveRunning = LiveActivityController.shared.isRunning
     @State private var lastAction: String?
+    @State private var seeding = false
+    @State private var seedResult: String?
+    @State private var userHash: String?
+    @State private var copied = false
 
     private let liveEnabled = LiveActivityController.shared.systemEnabled
 
     var body: some View {
         List {
+            appInfoSection
+            identitySection
             statusSection
+            cloudKitSection
             injectSection
             liveActivitySection
             restoreSection
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
-        .navigationTitle("開發者工具")
+        .navigationTitle("開發者後台")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { refresh() }
+        .task { userHash = await DeveloperAccessService.currentUserHash() }
+    }
+
+    // MARK: - App info
+
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
+    private var isDebugBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private var appInfoSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: "graduationcap.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("NTUE 開發者後台").font(.headline)
+                    Text("v\(appVersion)")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(isDebugBuild ? "DEBUG" : "RELEASE")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(isDebugBuild ? .orange : .green)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Capsule().fill((isDebugBuild ? Color.orange : Color.green).opacity(0.12)))
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    // MARK: - Developer identity (whitelist enrollment)
+
+    private var identitySection: some View {
+        Section {
+            Button {
+                if let userHash {
+                    UIPasteboard.general.string = userHash
+                    withAnimation { copied = true }
+                }
+            } label: {
+                devRow("識別碼（點按複製）",
+                       subtitle: userHash ?? "讀取中…（需登入 iCloud）",
+                       icon: copied ? "checkmark" : "doc.on.doc",
+                       color: Theme.iconBlue,
+                       mono: true)
+            }
+            .disabled(userHash == nil)
+            .foregroundStyle(.primary)
+        } header: {
+            Text("開發者身分")
+        } footer: {
+            Text("把這串識別碼加進 CloudKit 的 DevAccessPolicy/main-dev-access-policy 的 allowedUserHashes,這台裝置的 iCloud 帳號就能看到「開發者後台」(Release 版也適用)。")
+        }
     }
 
     // MARK: - Sections
@@ -54,6 +131,50 @@ struct DevToolsView: View {
         }
     }
 
+    private var cloudKitSection: some View {
+        Section {
+            NavigationLink {
+                AdminView()
+            } label: {
+                devRow("管理後台",
+                       subtitle: "新增 / 編輯 行事曆、學期、強制更新設定",
+                       icon: "square.grid.2x2.fill",
+                       color: Theme.iconMaroon)
+            }
+
+            Button {
+                seeding = true
+                seedResult = nil
+                Task {
+                    do {
+                        let s = try await CloudKitSeeder.seedAll()
+                        seedResult = "已寫入 \(s.terms) 學期、\(s.events) 活動、AppConfig。到 CloudKit Console 按 Deploy Schema 推到 Production。"
+                        await RemoteConfigService.shared.refresh()
+                    } catch {
+                        seedResult = "失敗：\(error.localizedDescription)（確認已登入 iCloud 且已加入 CloudKit capability）"
+                    }
+                    seeding = false
+                }
+            } label: {
+                if seeding {
+                    HStack { ProgressView(); Text("寫入中…") }
+                } else {
+                    devRow("寫入種子資料到 CloudKit",
+                           subtitle: "建立 schema + 範例學期 / 活動 / AppConfig",
+                           icon: "icloud.and.arrow.up.fill",
+                           color: Theme.iconBlue)
+                }
+            }
+            .disabled(seeding)
+            .foregroundStyle(.primary)
+        } header: {
+            Text("CloudKit")
+        } footer: {
+            Text(seedResult ?? "把內建的學期行事曆 + 範例活動 + AppConfig 寫進 CloudKit 開發環境,順便自動建立 schema。之後在 Dashboard 維護真實資料即可,不必發新版。")
+                .foregroundStyle(seedResult == nil ? .secondary : Theme.accent)
+        }
+    }
+
     private var injectSection: some View {
         Section {
             ForEach(DebugSnapshot.Scenario.allCases) { scenario in
@@ -62,20 +183,12 @@ struct DevToolsView: View {
                     refresh()
                     lastAction = "已注入「\(scenario.title)」並刷新小工具"
                 } label: {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(scenario.title).foregroundStyle(.primary)
-                            Text(scenario.detail).font(.caption).foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: scenario.icon)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 29, height: 29)
-                            .background(Theme.accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    }
+                    devRow(scenario.title,
+                           subtitle: scenario.detail,
+                           icon: scenario.icon,
+                           color: Theme.accent)
                 }
+                .foregroundStyle(.primary)
             }
         } header: {
             Text("注入測試資料")
@@ -100,8 +213,12 @@ struct DevToolsView: View {
                     liveRunning = LiveActivityController.shared.isRunning
                     lastAction = liveRunning ? "已啟動課程動態" : "啟動失敗:先注入有課的情境,並確認系統已開啟 Live Activity"
                 } label: {
-                    Label("用目前快照啟動課程動態", systemImage: "play.circle")
+                    devRow("用目前快照啟動課程動態",
+                           subtitle: "先注入有課的情境再啟動",
+                           icon: "play.circle.fill",
+                           color: Theme.iconAmber)
                 }
+                .foregroundStyle(.primary)
                 .disabled(!liveEnabled)
             }
         } header: {
@@ -125,6 +242,28 @@ struct DevToolsView: View {
         } footer: {
             Text("用 App 目前快取的課表 / 作業重建快照,清掉上面注入的測試資料。")
         }
+    }
+
+    // MARK: - Row component (TPASS-style colored icon tile)
+
+    private func devRow(_ title: String, subtitle: String, icon: String,
+                        color: Color, mono: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(color))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                Text(subtitle)
+                    .font(mono ? .system(size: 11, design: .monospaced) : .caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(mono ? 1 : 2)
+                    .truncationMode(.middle)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: - Helpers
@@ -222,4 +361,115 @@ enum DebugSnapshot {
                   end: now.addingTimeInterval(to * 60))
     }
 }
+
+/// First-time unlock sheet reached from 關於 → 作者 (tap 5×). Shows this device's
+/// whitelist hash (copyable) and a one-tap bootstrap that creates/updates the
+/// `DevAccessPolicy` record and enrolls this iCloud account — so the developer
+/// tools appear without ever touching the CloudKit Console.
+struct DevUnlockSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var hash: String?
+    @State private var copied = false
+#if DEBUG
+    @State private var working = false
+    @State private var enrolled = false
+    @State private var message: String?
 #endif
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        if let hash {
+                            UIPasteboard.general.string = hash
+                            withAnimation { copied = true }
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.iconBlue))
+                            Text(hash ?? "讀取中…（需登入 iCloud）")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .disabled(hash == nil)
+                } header: {
+                    Text("你的識別碼")
+                } footer: {
+                    Text("這是這台裝置 iCloud 帳號的識別碼。點按可複製,手動貼到 CloudKit 白名單也行;或直接用下面的按鈕一鍵啟用。")
+                }
+
+#if DEBUG
+                Section {
+                    Button {
+                        enroll()
+                    } label: {
+                        if working {
+                            HStack { ProgressView(); Text("啟用中…") }
+                        } else {
+                            Label("啟用開發者後台（把我加入白名單）", systemImage: "key.fill")
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                    .disabled(working || hash == nil)
+                } header: {
+                    Text("自助啟用（僅 Debug 版）")
+                } footer: {
+                    Text(message ?? "會在目前 CloudKit 環境建立 / 更新 DevAccessPolicy,並把這台裝置加入白名單。Debug 版會自動建立 schema;要上 Release 需再到 CloudKit Console 按 Deploy to Production。")
+                        .foregroundStyle(message == nil ? .secondary : (enrolled ? Theme.accent : .red))
+                }
+
+                if enrolled {
+                    Section {
+                        Label("已啟用,回上一頁就會看到「開發者後台」。", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+#else
+                Section {
+                    Label("複製上面的識別碼傳給開發者,由開發者手動加入白名單後即可解鎖。", systemImage: "envelope")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("正式版不提供自助啟用,以免任何人都能把自己加入白名單。")
+                }
+#endif
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
+            .navigationTitle("開發者後台解鎖")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .task { hash = await DeveloperAccessService.currentUserHash() }
+        }
+    }
+
+#if DEBUG
+    private func enroll() {
+        working = true
+        message = nil
+        Task {
+            do {
+                try await DeveloperAccessService.enrollCurrentUser()
+                enrolled = true
+                message = "已把這台裝置加入白名單。"
+            } catch {
+                message = "失敗：\(error.localizedDescription)"
+            }
+            working = false
+        }
+    }
+#endif
+}

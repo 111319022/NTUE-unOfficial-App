@@ -123,6 +123,7 @@ struct HomeView: View {
     @AppStorage("use18Week") private var use18Week = false   // re-render countdown when toggled
     @State private var vm = HomeViewModel()
     @State private var moodle = HomeMoodleViewModel()
+    @State private var config = RemoteConfigService.shared
     @State private var sheet: WebDestination?
 
     var body: some View {
@@ -132,6 +133,7 @@ struct HomeView: View {
                 heroCard
                 summaryStrip
                 deadlinesSection
+                upcomingEventsSection
                 todaySection
                 tomorrowSection
                 if let error = vm.errorMessage, vm.timetable.isEmpty {
@@ -145,6 +147,7 @@ struct HomeView: View {
         .refreshable {
             await vm.load(studentId: appState.studentInfo.studentId, forceReload: true)
             await moodle.load(forceReload: true)
+            await config.refresh()
         }
         .task { await vm.load(studentId: appState.studentInfo.studentId) }
         .task { if !moodle.loaded { await moodle.load() } }
@@ -327,6 +330,75 @@ struct HomeView: View {
         switch days {
         case 0: return "今天截止"
         case 1: return "明天截止"
+        default: return "\(days) 天後"
+        }
+    }
+
+    // MARK: 近期活動 (remote 校園行事曆)
+
+    @ViewBuilder
+    private var upcomingEventsSection: some View {
+        let events = config.upcomingEvents(limit: 3)
+        if !events.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                NavigationLink {
+                    CalendarView()
+                } label: {
+                    HStack {
+                        Text("近期活動").font(.headline)
+                        Spacer()
+                        Text("校園行事曆").font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 4)
+                }
+                .buttonStyle(.plain)
+
+                ForEach(events) { e in eventCard(e) }
+            }
+        }
+    }
+
+    private func eventCard(_ e: CalendarEvent) -> some View {
+        Card {
+            HStack(spacing: 12) {
+                Image(systemName: e.category.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Theme.iconBlue)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(e.title).font(.subheadline.bold())
+                    Text("\(eventDateText(e))　·　\(e.category.label)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if e.isOngoing() {
+                    Pill(text: "進行中", color: Theme.amber)
+                } else {
+                    Pill(text: eventRelative(e.date), color: Theme.accent)
+                }
+            }
+        }
+    }
+
+    private func eventDateText(_ e: CalendarEvent) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "zh_TW"); f.dateFormat = "M/d(EEEEE)"
+        if let end = e.endDate {
+            let g = DateFormatter(); g.locale = Locale(identifier: "zh_TW"); g.dateFormat = "M/d"
+            return "\(f.string(from: e.date)) – \(g.string(from: end))"
+        }
+        return f.string(from: e.date)
+    }
+
+    private func eventRelative(_ date: Date) -> String {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
+        switch days {
+        case ..<0: return "進行中"
+        case 0: return "今天"
+        case 1: return "明天"
         default: return "\(days) 天後"
         }
     }

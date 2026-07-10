@@ -10,14 +10,22 @@ struct NTUE_unofficialApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
-                .task { await appState.restoreSession() }
+                .updateGate()
+                .task {
+                    NotificationManager.shared.registerAsDelegate()
+                    await appState.restoreSession()
+                }
+                .task { await RemoteConfigService.shared.refresh() }
                 .tint(Theme.accent)
                 .preferredColorScheme(AppTheme(rawValue: themeRaw)?.colorScheme)
         }
         .onChange(of: scenePhase) { _, phase in
             // Keep the class Live Activity in step with the current period each
             // time the app comes to the foreground (and auto-start if enabled).
-            if phase == .active { LiveActivityController.shared.syncOnForeground() }
+            if phase == .active {
+                LiveActivityController.shared.syncOnForeground()
+                Task { await RemoteConfigService.shared.refresh() }
+            }
         }
     }
 }
