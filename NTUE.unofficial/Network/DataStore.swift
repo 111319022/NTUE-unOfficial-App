@@ -97,6 +97,8 @@ final class DataStore {
                 cachedDeadlines = result
                 Persistence.save(result, for: .moodleDeadlines)
                 WidgetBridge.update(timetable: cachedTimetable, deadlines: result)
+                // Re-arm local deadline reminders from the freshest list (no-op if off).
+                Task { await NotificationManager.shared.rescheduleDeadlines(result) }
             }
             return result
         } catch {
@@ -173,5 +175,6 @@ final class DataStore {
         Persistence.clearAll()
         WidgetBridge.update(timetable: nil, deadlines: nil)
         LiveActivityController.shared.end()
+        NotificationManager.shared.clearAll()
     }
 }
