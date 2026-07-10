@@ -151,6 +151,16 @@ struct SemesterSelection: Identifiable, Hashable, Codable {
     var displayLabel: String { "\(year) 學年度 \(semesterLabel)" }
     var shortLabel: String { "\(year) \(semesterLabel)" }
 
+    /// Ultra-short label for chart axes, e.g. "114上" / "114下" / "114暑".
+    var compactLabel: String {
+        switch semester {
+        case "1": return "\(year)上"
+        case "2": return "\(year)下"
+        case "3": return "\(year)暑"
+        default:  return "\(year)-\(semester)"
+        }
+    }
+
     var option: SemesterOption { SemesterOption(id: id, label: shortLabel) }
 
     /// Keep only 上/下學期 (drop 暑期/暑假) and sort oldest → newest.

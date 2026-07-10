@@ -100,6 +100,17 @@ struct GradesView: View {
         .navigationTitle("成績")
         .navigationBarTitleDisplayMode(.inline)
         .background(Theme.background)
+        .toolbar {
+            if selectedID == Self.allID {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        GradeAnalysisView(vm: transcriptVM)
+                    } label: {
+                        Label("成績分析", systemImage: "chart.xyaxis.line")
+                    }
+                }
+            }
+        }
         .task { await initialLoad() }
     }
 
