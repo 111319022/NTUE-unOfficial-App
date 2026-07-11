@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>支援 · NTUE unofficial</title>
+<style>
+  :root{
+    --bg:#f6f1e9; --card:#fffdf9; --text:#2b2620; --muted:#6b6357;
+    --accent:#8c2f2f; --line:#e7ddcd;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17140f; --card:#211c15; --text:#ece5da; --muted:#a89e8f;
+      --accent:#d98a7a; --line:#332b20;
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",
+      "Helvetica Neue",Arial,sans-serif;
+    line-height:1.75; font-size:17px;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:40px 22px 96px}
+  header{margin-bottom:28px}
+  .badge{
+    display:inline-block; font-size:13px; font-weight:600; color:var(--accent);
+    background:color-mix(in srgb,var(--accent) 14%,transparent);
+    padding:4px 12px; border-radius:999px; margin-bottom:16px;
+  }
+  h1{font-size:28px; line-height:1.3; margin:0 0 8px}
+  .meta{color:var(--muted); font-size:14px; margin:0}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:22px 24px; margin-top:22px;
+  }
+  h2{font-size:19px; margin:0 0 10px; display:flex; gap:8px; align-items:baseline}
+  h2 .n{color:var(--accent); font-variant-numeric:tabular-nums}
+  p{margin:0 0 12px}
+  p:last-child{margin-bottom:0}
+  ul{margin:0 0 4px; padding-left:20px}
+  li{margin:6px 0}
+  strong{color:var(--text)}
+  a{color:var(--accent)}
+  .tldr{
+    background:color-mix(in srgb,var(--accent) 8%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);
+  }
+  code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
+    background:color-mix(in srgb,var(--muted) 16%,transparent);
+    padding:1px 6px; border-radius:6px; word-break:break-all;
+  }
+  .btn{
+    display:inline-block; margin-top:6px; padding:10px 18px; border-radius:999px;
+    background:var(--accent); color:#fffdf9; font-weight:600; text-decoration:none;
+    font-size:15px;
+  }
+  .btn-outline{
+    display:inline-block; margin-top:6px; margin-left:8px; padding:10px 18px; border-radius:999px;
+    border:1px solid var(--accent); color:var(--accent); font-weight:600; text-decoration:none;
+    font-size:15px;
+  }
+  nav.foot-nav{display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:8px}
+  footer{margin-top:36px; color:var(--muted); font-size:14px; text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="badge">NTUE.unofficial · 非官方 App</span>
+    <h1>支援</h1>
+    <p class="meta">遇到問題、有功能建議，或帳號登入異常，都可以從這裡聯絡開發者。</p>
+  </header>
+
+  <section class="card tldr">
+    <h2>快速聯絡</h2>
+    <p>回報 Bug 或提出功能建議，最推薦直接在 GitHub 開 Issue（可附截圖，追蹤進度也方便）：</p>
+    <a class="btn" href="https://github.com/111319022/NTUE-unOfficial-App/issues/new">前往 GitHub 開 Issue</a>
+    <a class="btn-outline" href="mailto:rayhsu63@gmail.com?subject=NTUE%20unofficial%20支援">寄 Email 給開發者</a>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">1.</span> 登入失敗 / 顯示資料過舊</h2>
+    <ul>
+      <li>先確認能否用同一組帳密，直接在瀏覽器登入校園入口網（<code>protocol.ntue.edu.tw</code>）—— 如果連網頁版都無法登入，通常是帳密或校方系統本身的問題，需聯絡教務處／資訊中心，而非本 App。</li>
+      <li>App 內在各清單頁面下拉可「下拉重新整理」強制重抓最新資料；部分過去學期資料為離線快取，屬正常設計。</li>
+      <li>若確定帳密正確但 App 仍無法登入或資料明顯錯誤，請到 GitHub 開 Issue，並註明使用的 iOS 版本與大致操作步驟（<strong>請勿在 Issue 內附上你的帳號密碼</strong>）。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">2.</span> 功能建議 / 想要的頁面還沒支援</h2>
+    <p>本 App 由學生個人維護，功能會依開發時間逐步擴充。歡迎在 GitHub Issues 提出想要的功能（例如某個校務系統頁面尚未整合），會盡量評估加入。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">3.</span> 資料正確性</h2>
+    <p>App 內所有課表、成績、作業等資料都即時取自學校官方系統（iNTUE 校務系統、Moodle），本 App 僅負責呈現，不會修改任何資料。若 App 內容與官方系統顯示不一致，請一律以官方系統為準，並回報讓開發者確認是否為解析邏輯的問題。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">4.</span> 隱私相關問題</h2>
+    <p>本 App 沒有後端伺服器，帳密只存在你裝置的 Keychain。詳細說明請見<a href="privacy-policy.html">隱私權政策</a>。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">5.</span> 聯絡方式</h2>
+    <p>CHENG RUEI HSU　·　<a href="mailto:rayhsu63@gmail.com">rayhsu63@gmail.com</a><br>
+    GitHub：<a href="https://github.com/111319022/NTUE-unOfficial-App">111319022/NTUE-unOfficial-App</a></p>
+  </section>
+
+  <footer>
+    <nav class="foot-nav">
+      <a href="index.html">首頁</a>
+      <a href="privacy-policy.html">隱私權政策</a>
+      <a href="https://github.com/111319022/NTUE-unOfficial-App">GitHub</a>
+    </nav>
+    <p style="margin-top:14px">© 2026 NTUE unofficial　·　學生自製，非學校官方出品</p>
+  </footer>
+</div>
+</body>
+</html>
