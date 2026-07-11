@@ -134,7 +134,9 @@ actor MoodleService {
             for course in scoped {
                 group.addTask {
                     let html = (try? await NTUEClient.shared.get("\(Self.base)/mod/assign/index.php?id=\(course.id)")) ?? ""
+                    var seen = Set<Int>()
                     let assignments = MoodleParser.assignments(fromIndex: html)
+                        .filter { seen.insert($0.id).inserted }   // unique module ids → safe List diff
                         .sorted { ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture) }
                     return MoodleCourseAssignments(course: course, assignments: assignments)
                 }
@@ -187,10 +189,15 @@ actor MoodleService {
             sesskey: sesskey
         )
         let courses = data["courses"] as? [[String: Any]] ?? []
-        return courses.compactMap { c in
+        let parsed = courses.compactMap { c -> MoodleCourse? in
             guard let id = c["id"] as? Int, let full = c["fullname"] as? String else { return nil }
             return MoodleCourse(id: id, fullName: full, shortName: (c["shortname"] as? String) ?? "")
         }
+        // De-dup by course id: Moodle can return the same course twice when the
+        // user has multiple enrolment instances / meta-linked roles. Duplicate
+        // ids would crash the 作業 List's animated diff (UICollectionView assertion).
+        var seen = Set<Int>()
+        return parsed.filter { seen.insert($0.id).inserted }
     }
 
     /// The 上/下學期 present among the enrolled courses (course prefix `1142` →
