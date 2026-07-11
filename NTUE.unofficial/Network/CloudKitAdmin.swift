@@ -29,6 +29,33 @@ enum CloudKitAdmin {
         try await save([record, manifest])
     }
 
+    /// Bulk-save many events, touching the events manifest only once. Used by the
+    /// 115 行事曆 importer. Idempotent when event ids are stable: `savePolicy .allKeys`
+    /// overwrites existing records so re-running the import doesn't create duplicates.
+    static func save(events: [CalendarEvent]) async throws {
+        guard !events.isEmpty else { return }
+        let manifest = try await CloudKitStore.loadManifest(CloudKitConfig.Manifest.events)
+        var records: [CKRecord] = []
+        for event in events {
+            let record = CKRecord(recordType: CloudKitConfig.RecordType.calendarEvent,
+                                  recordID: CKRecord.ID(recordName: event.id))
+            event.apply(to: record)
+            add(event.id, to: manifest)
+            records.append(record)
+        }
+        // Save the event records first (chunked; the public DB default zone can't
+        // commit large batches atomically), then the manifest so it never points at
+        // an id that failed to write.
+        let chunkSize = 300
+        var i = 0
+        while i < records.count {
+            let chunk = Array(records[i..<min(i + chunkSize, records.count)])
+            try await save(chunk, atomic: false)
+            i += chunkSize
+        }
+        try await save([manifest], atomic: false)
+    }
+
     static func deleteEvent(id: String) async throws {
         let manifest = try await CloudKitStore.loadManifest(CloudKitConfig.Manifest.events)
         remove(id, from: manifest)
@@ -84,8 +111,9 @@ enum CloudKitAdmin {
     /// `.allKeys` overwrites the server copy regardless of change tag, so we can
     /// build a fresh record from the model and save without a fetch-modify cycle.
     private static func save(_ records: [CKRecord],
-                             deleting ids: [CKRecord.ID] = []) async throws {
+                             deleting ids: [CKRecord.ID] = [],
+                             atomic: Bool = true) async throws {
         _ = try await CloudKitConfig.publicDB.modifyRecords(
-            saving: records, deleting: ids, savePolicy: .allKeys, atomically: true)
+            saving: records, deleting: ids, savePolicy: .allKeys, atomically: atomic)
     }
 }

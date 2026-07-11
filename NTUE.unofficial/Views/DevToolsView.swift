@@ -20,6 +20,8 @@ struct DevToolsView: View {
     @State private var lastAction: String?
     @State private var seeding = false
     @State private var seedResult: String?
+    @State private var importing115 = false
+    @State private var import115Result: String?
     @State private var userHash: String?
     @State private var copied = false
 
@@ -167,11 +169,37 @@ struct DevToolsView: View {
             }
             .disabled(seeding)
             .foregroundStyle(.primary)
+
+            Button {
+                importing115 = true
+                import115Result = nil
+                Task {
+                    do {
+                        let n = try await Calendar115Importer.importAll()
+                        import115Result = "已匯入 \(n) 筆 115 學年度校園活動到 CloudKit。可到「管理後台」增刪。"
+                        await RemoteConfigService.shared.refresh()
+                    } catch {
+                        import115Result = "失敗：\(error.localizedDescription)（確認已登入 iCloud、schema 已建立）"
+                    }
+                    importing115 = false
+                }
+            } label: {
+                if importing115 {
+                    HStack { ProgressView(); Text("匯入中…") }
+                } else {
+                    devRow("匯入 115 學年度行事曆",
+                           subtitle: "把官方 115 行事曆的學生相關活動寫進校園行事曆",
+                           icon: "calendar.badge.plus",
+                           color: Theme.iconMaroon)
+                }
+            }
+            .disabled(importing115)
+            .foregroundStyle(.primary)
         } header: {
             Text("CloudKit")
         } footer: {
-            Text(seedResult ?? "把內建的學期行事曆 + 範例活動 + AppConfig 寫進 CloudKit 開發環境,順便自動建立 schema。之後在 Dashboard 維護真實資料即可,不必發新版。")
-                .foregroundStyle(seedResult == nil ? .secondary : Theme.accent)
+            Text(import115Result ?? seedResult ?? "把內建的學期行事曆 + 範例活動 + AppConfig 寫進 CloudKit 開發環境,順便自動建立 schema。之後在 Dashboard 維護真實資料即可,不必發新版。")
+                .foregroundStyle((import115Result ?? seedResult) == nil ? .secondary : Theme.accent)
         }
     }
 
