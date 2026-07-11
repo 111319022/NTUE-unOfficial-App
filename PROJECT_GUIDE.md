@@ -56,8 +56,9 @@ header（問候 + 日期 + 學期 pill）→ 楓紅 hero 卡（下一堂課倒�
 | `MoodleParser.swift` | sesskey regex、作業索引表、公告討論串（SwiftSoup） |
 | `DataStore.swift` | `@MainActor @Observable` 單例，記憶體快取 + 預取 |
 | `Persistence.swift` | 磁碟 SWR 快照（Application Support 的 JSON） |
-| `WidgetBridge.swift` | 把快取展開成 `WidgetSnapshot` 寫入 App Group |
+| `WidgetBridge.swift` | 把快取展開成 `WidgetSnapshot` 寫入 App Group（展開時套用 `AcademicCalendar.isInSession` 學期門檻） |
 | `LiveActivityController.swift` | `@MainActor` 單例，啟動／更新／結束 Live Activity |
+| `NotificationManager.swift` | `@MainActor` 單例，本機通知：作業截止提醒（`deadline-` 前綴）＋上課提醒（`class-` 前綴），點上課提醒啟動 Live Activity |
 
 ### 快取策略
 
@@ -142,11 +143,15 @@ header（問候 + 日期 + 學期 pill）→ 楓紅 hero 卡（下一堂課倒�
 
 **資料流** — `WidgetBridge.update()`（App）把週課表 `Timetable` 展開成未來 7 天具日期的 `ClassSlot`、把 `MoodleDeadline` 映成 `AssignmentItem`，寫成 `WidgetSnapshot` JSON 到 App Group（`SharedStore.save()` 同時呼叫 `WidgetCenter.reloadAllTimelines()`）。掛在 `DataStore` 快取課表／作業之後，登出時清除。Widget `ClassProvider` 讀 `SharedStore.load()`。
 
+**放假門檻** — 展開時逐日以 `AcademicCalendar.isInSession(day)` 過濾，落在假期（開學前／學期結束後）的課不寫入 snapshot，讓 Widget 與 Live Activity 跟首頁「假期中」一致。`isInSession` 回 `Bool?`：`nil`（學曆未涵蓋該日）時**不過濾**，避免學曆過期時清空真實課表（`WidgetBridge` 只在 `== false` 時 skip）。共用同一份 `AcademicCalendar` 學曆（CloudKit → App Group 快取），因此正確與否取決於 Dashboard 的學期 `start` 日期。
+
 **Widgets**（`NTUEWidgets/`）— `NextClassWidget`（systemSmall + accessory）、`AssignmentsWidget`（systemSmall + accessoryRectangular）、`CombinedWidget`（systemMedium）。
 
 **Live Activity** — `LiveActivityController`（App，`@MainActor` 單例）start/update/end `Activity<ClassActivityAttributes>`。倒數用 SwiftUI timer text，App 沒跑也會 tick；controller 只在課堂邊界重推 ContentState（`syncOnForeground()` 在 `scenePhase == .active`）。`liveActivity_autoStart` 設定切自動／手動，皆在 ServicesView「課程動態」區。
 
-> **限制（已告知使用者）**：真正「App 關閉時自己彈出」需 ActivityKit push（伺服器），超出範圍；此處「自動」是前景／背景刷新的 best-effort。
+**上課提醒（route-1 nudge）** — `NotificationManager.rescheduleClassReminders(from:)` 依 `WidgetBridge.upcomingClasses(daysAhead: 14)`（同套放假門檻）取每天第一堂課，於**第一堂前 30 分鐘**排一則本機通知（`class-yyyyMMdd`，每天一則）。點通知 → `didReceive` 呼叫 `LiveActivityController.start()`，即使「上課時自動顯示」沒開也會啟動。`notify_class` 開關在「課程動態」區；課表刷新（`DataStore.timetable` 成功）時自動重排，登出 `clearAll()` 清除。iOS 待排上限 64 則：作業（≤40）+ 上課（≤14）在安全範圍。
+
+> **限制（已告知使用者）**：真正「App 關閉時自己彈出並逐堂推進」需 ActivityKit push-to-start（APNs 伺服器），超出範圍。目前策略：本機通知在第一堂前自己跳（免後端）→ 點一下啟動 Live Activity → 之後靠 timer text 自走、課間開 App 時 `syncOnForeground` 推進。
 
 **開發者工具** — `Views/DevToolsView.swift`（`#if DEBUG` 編譯）注入錨定在「現在」的合成 `WidgetSnapshot`，讓暑假（真實課表為空）也能跑小工具與 Live Activity 的真實 code path；含「還原真實資料」(`WidgetBridge.updateFromCache()`)。
 

@@ -19,6 +19,13 @@ enum WidgetBridge {
                deadlines: DataStore.shared.cachedDeadlines)
     }
 
+    /// Concrete dated class sessions for the next `daysAhead` days, break-gated
+    /// and sorted oldest→newest. Shared by the widget snapshot and the 上課提醒
+    /// scheduler (`NotificationManager`).
+    static func upcomingClasses(from timetable: Timetable?, daysAhead: Int = 7, now: Date = Date()) -> [ClassSlot] {
+        expand(timetable: timetable, daysAhead: daysAhead, now: now)
+    }
+
     /// Expand the recurring weekly timetable onto concrete calendar days for the
     /// next week, so the widget can pick "the next class" even across midnight.
     private static func expand(timetable: Timetable?, daysAhead: Int = 7, now: Date = Date()) -> [ClassSlot] {
@@ -28,6 +35,12 @@ enum WidgetBridge {
 
         for offset in 0...daysAhead {
             guard let day = cal.date(byAdding: .day, value: offset, to: now) else { continue }
+            // Skip days that fall in a break (before 開學 / after 學期結束) so the
+            // widget & Live Activity stay consistent with 首頁, which hides classes
+            // during breaks. `== false` only: a `nil` result means the calendar
+            // doesn't cover this day, so we don't gate (avoid blanking a real
+            // timetable on a stale calendar).
+            if AcademicCalendar.isInSession(day) == false { continue }
             let appWeekday = Self.appWeekday(day, cal: cal)
             for session in timetable.allSessions where session.weekday == appWeekday {
                 guard let (start, end) = times(for: session.periodTime, on: day, cal: cal) else { continue }

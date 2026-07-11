@@ -55,6 +55,8 @@ final class DataStore {
                 cachedTimetable = page.timetable
                 Persistence.save(page.timetable, for: .timetable)
                 WidgetBridge.update(timetable: page.timetable, deadlines: cachedDeadlines)
+                // Re-arm 上課提醒 from the freshest timetable (no-op if the feature is off).
+                Task { await NotificationManager.shared.rescheduleClassReminders(from: page.timetable) }
             }
             return page
         } catch {

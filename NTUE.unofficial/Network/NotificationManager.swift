@@ -29,6 +29,18 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         [.banner, .sound]
     }
 
+    /// Tapping a 上課提醒 opens the app here — start the class Live Activity so the
+    /// user gets the on-screen countdown with a single tap (even if 自動顯示 is off).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let userInfo = response.notification.request.content.userInfo
+        if userInfo["action"] as? String == Self.startLiveActivityAction {
+            await MainActor.run { LiveActivityController.shared.start() }
+        }
+    }
+
     /// Master on/off, mirrored by the settings toggle.
     var isEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: Keys.enabled) }
@@ -41,13 +53,25 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Keys.lead) }
     }
 
+    /// 上課提醒 on/off — a local notification before the day's first class.
+    var classRemindersEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Keys.classEnabled) }
+        set { UserDefaults.standard.set(newValue, forKey: Keys.classEnabled) }
+    }
+
     private enum Keys {
         static let enabled = "notify_assignments"
         static let lead = "notify_assignments_lead"
+        static let classEnabled = "notify_class"
     }
 
-    /// All identifiers we manage share this prefix so we can clear only ours.
-    private static let idPrefix = "deadline-"
+    /// Identifier prefixes so we can clear only our own pending requests.
+    private static let deadlinePrefix = "deadline-"
+    private static let classPrefix = "class-"
+    /// Minutes before the day's first class to fire the 上課提醒.
+    private static let classLeadMinutes = 30
+    /// userInfo marker whose tap starts the class Live Activity.
+    static let startLiveActivityAction = "startLiveActivity"
 
     // MARK: - Authorization
 
@@ -78,7 +102,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// No-ops (and clears) when the feature is off.
     func rescheduleDeadlines(_ deadlines: [MoodleDeadline]) async {
         let center = UNUserNotificationCenter.current()
-        clearPending(center)
+        clearPending(prefix: Self.deadlinePrefix, on: center)
 
         guard isEnabled else { return }
         guard await requestAuthorization() else { return }
@@ -106,14 +130,49 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         await rescheduleDeadlines(DataStore.shared.cachedDeadlines ?? [])
     }
 
-    /// Remove everything we scheduled (e.g. on logout or when disabled).
-    func clearAll() {
-        clearPending(UNUserNotificationCenter.current())
+    // MARK: - Class reminders
+
+    /// Replace all pending 上課提醒 with one per upcoming class day, fired
+    /// `classLeadMinutes` before that day's first class. Break days are already
+    /// excluded by `WidgetBridge` (學期門檻). No-ops (and clears) when off.
+    func rescheduleClassReminders(from timetable: Timetable?) async {
+        let center = UNUserNotificationCenter.current()
+        clearPending(prefix: Self.classPrefix, on: center)
+
+        guard classRemindersEnabled else { return }
+        guard await requestAuthorization() else { return }
+
+        let now = Date()
+        let cal = Calendar.current
+        // Earliest class of each in-session day for the next ~2 weeks.
+        let firstOfDay = Dictionary(grouping: WidgetBridge.upcomingClasses(from: timetable, daysAhead: 14, now: now)) {
+            cal.startOfDay(for: $0.start)
+        }
+        .compactMap { $0.value.min { $0.start < $1.start } }
+        .sorted { $0.start < $1.start }
+
+        for slot in firstOfDay {
+            let fireDate = slot.start.addingTimeInterval(-Double(Self.classLeadMinutes) * 60)
+            guard fireDate > now else { continue }   // lead window already passed
+            scheduleClassReminder(slot, at: fireDate, on: center)
+        }
     }
 
-    private func clearPending(_ center: UNUserNotificationCenter) {
+    /// Re-run 上課提醒 scheduling from the DataStore's cached timetable.
+    func refreshClassRemindersFromCache() async {
+        await rescheduleClassReminders(from: DataStore.shared.cachedTimetable)
+    }
+
+    /// Remove everything we scheduled (e.g. on logout or when disabled).
+    func clearAll() {
+        let center = UNUserNotificationCenter.current()
+        clearPending(prefix: Self.deadlinePrefix, on: center)
+        clearPending(prefix: Self.classPrefix, on: center)
+    }
+
+    private func clearPending(prefix: String, on center: UNUserNotificationCenter) {
         center.getPendingNotificationRequests { requests in
-            let ids = requests.map(\.identifier).filter { $0.hasPrefix(Self.idPrefix) }
+            let ids = requests.map(\.identifier).filter { $0.hasPrefix(prefix) }
             center.removePendingNotificationRequests(withIdentifiers: ids)
         }
     }
@@ -128,11 +187,39 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "\(Self.idPrefix)\(item.id)-\(Int(offset))",
+            identifier: "\(Self.deadlinePrefix)\(item.id)-\(Int(offset))",
             content: content,
             trigger: trigger
         )
         center.add(request)
+    }
+
+    private func scheduleClassReminder(_ slot: ClassSlot, at fireDate: Date, on center: UNUserNotificationCenter) {
+        let content = UNMutableNotificationContent()
+        content.title = "上課提醒"
+        let place = slot.classroom.isEmpty ? "" : "・\(slot.classroom)"
+        content.body = "\(slot.courseName) \(Self.hhmm(slot.start)) 開始\(place)，點一下開啟課程動態"
+        content.sound = .default
+        content.userInfo = ["action": Self.startLiveActivityAction]
+
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "\(Self.classPrefix)\(Self.dayID(slot.start))",
+            content: content,
+            trigger: trigger
+        )
+        center.add(request)
+    }
+
+    private static func hhmm(_ date: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "HH:mm"
+        return f.string(from: date)
+    }
+
+    private static func dayID(_ date: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyyMMdd"
+        return f.string(from: date)
     }
 
     /// "還有 1 天" / "還有 3 小時" / "即將" — describes the lead offset.

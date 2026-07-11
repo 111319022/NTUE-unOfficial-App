@@ -5,6 +5,7 @@ struct ServicesView: View {
     @AppStorage("app_theme") private var themeRaw = AppTheme.system.rawValue
     @AppStorage("use18Week") private var use18Week = false
     @AppStorage("liveActivity_autoStart") private var liveAutoStart = false
+    @AppStorage("notify_class") private var classReminders = false
     @AppStorage("notify_assignments") private var notifyEnabled = false
     @AppStorage("notify_assignments_lead") private var notifyLead = LeadTime.dayAndHours.rawValue
     @State private var showOnboarding = false
@@ -43,6 +44,11 @@ struct ServicesView: View {
                 }
                 .tint(Theme.accent)
 
+                Toggle(isOn: $classReminders) {
+                    Label("上課前提醒（30 分鐘）", systemImage: "bell.badge.fill")
+                }
+                .tint(Theme.accent)
+
                 if liveRunning {
                     Button(role: .destructive) {
                         LiveActivityController.shared.end()
@@ -61,7 +67,7 @@ struct ServicesView: View {
             } header: {
                 Text("課程動態（Live Activity）")
             } footer: {
-                Text("在鎖定畫面與靈動島顯示目前這節課的下課倒數、以及下一節課何時開始。自動顯示需要你開啟 App 或系統背景刷新時才會更新;若要完全自動每天跳出需要推播伺服器(尚未支援)。")
+                Text("在鎖定畫面與靈動島顯示目前這節課的下課倒數、以及下一節課何時開始。「上課前提醒」會在每天第一堂課前 30 分鐘發本機通知，點一下即可開啟課程動態;放假期間不會提醒。若要在 App 關閉時完全自動跳出需要推播伺服器(尚未支援)。")
             }
 
             Section {
@@ -163,6 +169,15 @@ struct ServicesView: View {
                 if case .allowed = await DeveloperAccessService.verifyCurrentUserAccess() {
                     isDeveloperVerified = true
                 }
+            }
+        }
+        .onChange(of: classReminders) { _, on in
+            Task {
+                if on, !(await NotificationManager.shared.requestAuthorization()) {
+                    classReminders = false   // permission denied → revert the switch
+                    return
+                }
+                await NotificationManager.shared.refreshClassRemindersFromCache()
             }
         }
         .onChange(of: notifyEnabled) { _, on in

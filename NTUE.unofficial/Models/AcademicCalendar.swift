@@ -105,6 +105,21 @@ enum AcademicCalendar {
         return .unknown
     }
 
+    /// Whether classes are in session on `date` (between 開學 and 學期結束, per
+    /// the 16/18-week preference). Returns `nil` when the date falls outside the
+    /// calendar we actually know about, so callers can choose *not* to hide
+    /// classes when the calendar is stale/unmaintained rather than blanking a
+    /// real timetable.
+    static func isInSession(_ date: Date) -> Bool? {
+        let cal = Calendar(identifier: .gregorian)
+        let day = cal.startOfDay(for: date)
+        let known = terms
+        guard let earliest = known.map({ cal.startOfDay(for: $0.start) }).min(),
+              let latest = known.map({ cal.startOfDay(for: $0.end18) }).max(),
+              day >= earliest, day <= latest else { return nil }
+        return known.contains { day >= cal.startOfDay(for: $0.start) && day <= cal.startOfDay(for: end(of: $0)) }
+    }
+
     private static func term(_ code: String, _ name: String, start: String, end16: String, end18: String) -> AcademicTerm {
         AcademicTerm(code: code, name: name, start: date(start), end16: date(end16), end18: date(end18))
     }
