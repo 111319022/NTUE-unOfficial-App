@@ -28,6 +28,9 @@ final class AssignmentsViewModel {
     /// A specific (older) semester — fetched directly, cached for instant re-visit.
     func load(for selection: SemesterSelection) async {
         if let cached = cache[selection.id] { page = cached; return }
+        // Drop the previous semester's rows so the switch shows a loading state
+        // immediately instead of leaving stale data on screen while we fetch.
+        page = nil
         isLoading = true; errorMessage = nil
         do {
             let result = try await MoodleService.shared.loadCourseAssignments(for: selection)
@@ -74,6 +77,7 @@ struct AssignmentsView: View {
                     list
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: vm.isLoading)
         }
         .navigationTitle("作業")
         .task { await initialLoad() }
@@ -81,9 +85,19 @@ struct AssignmentsView: View {
 
     private func initialLoad() async {
         guard loadedID == nil else { return }
+        // Paint the cached newest semester immediately — both the rows *and* the
+        // bar label — so the switcher shows the real semester instead of "—"
+        // while the background refresh runs.
+        if let cached = DataStore.shared.cachedAssignments, !cached.semesters.isEmpty {
+            vm.page = cached
+            let id = cached.selected?.id ?? cached.semesters.last?.id ?? ""
+            loadedID = id
+            selectedID = id
+        }
         await vm.loadDefault()
-        loadedID = vm.page?.selected?.id ?? ""
-        selectedID = loadedID ?? ""
+        let id = vm.page?.selected?.id ?? vm.newestID ?? ""
+        loadedID = id
+        selectedID = id
     }
 
     private func pick(_ id: String) async {

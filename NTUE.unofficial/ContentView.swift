@@ -10,12 +10,19 @@ struct ContentView: View {
             switch appState.phase {
             case .launching:
                 SplashView()
+                    .transition(.opacity)
             case .loggedOut:
                 LoginView()
+                    .transition(.asymmetric(
+                        insertion: .opacity,
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    ))
             case .loggedIn:
                 MainTabView()
+                    .transition(.opacity)
             }
         }
+        .animation(.spring(duration: 0.55), value: appState.phase)
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView {
                 hasSeenOnboarding = true
