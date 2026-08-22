@@ -6,53 +6,100 @@ final class ScheduleViewModel {
     var timetable = Timetable(periods: [])
     var semesters: [SemesterSelection] = []
     var selected: SemesterSelection?
+    /// 畫面上這份課表是「哪一個學期的」。`nil` = 開機時先畫上去的舊快取,
+    /// 還不確定屬於哪學期(所以先讓它留著,不要閃 spinner)。
+    private(set) var shownID: String?
     var isLoading = false
     var errorMessage: String?
 
     private let service = NTUEService.shared
     private var cache: [String: Timetable] = [:]   // keyed by semester id
+    private var loadTask: Task<Bool, Never>?
 
     init() {
         if let cached = DataStore.shared.cachedTimetable { timetable = cached }
     }
 
-    func load(_ selection: SemesterSelection? = nil, studentId: String, forceReload: Bool = false) async {
-        let key = selection?.id ?? "default"
-        if !forceReload, let cached = cache[key] { timetable = cached; return }   // memory
+    /// 載入某學期的課表(`nil` = 本學期,走 DataStore 和首頁/小工具共用)。
+    /// 回傳「那個學期真的有課表」,讓呼叫端能決定要不要退回上一個學期。
+    @discardableResult
+    func load(_ selection: SemesterSelection? = nil, studentId: String, forceReload: Bool = false) async -> Bool {
+        // 學校的 session 是有狀態的(先 POST 學期、再 GET 課表),而且一次請求要
+        // ~10 秒。兩個學期同時在跑會互相汙染,慢的那個晚回來還會蓋掉新的 ——
+        // 所以先取消上一個並等它真的收手,再開始新的。
+        loadTask?.cancel()
+        _ = await loadTask?.value
+
+        let task = Task { await performLoad(selection, studentId: studentId, forceReload: forceReload) }
+        loadTask = task
+        return await task.value
+    }
+
+    private func performLoad(_ selection: SemesterSelection?,
+                             studentId: String,
+                             forceReload: Bool) async -> Bool {
+        // `nil` 代表本學期 —— DataStore 也是明確要這個學期,兩邊用同一把 key。
+        let target = selection ?? NTUETerm.currentSemester()
+        let key = target.id
+
+        if !forceReload, let cached = cache[key] {   // memory
+            show(cached, for: target)
+            return !cached.isEmpty
+        }
         // Past semesters never change → read the on-disk snapshot, skip the network.
-        if !forceReload, let sel = selection, NTUETerm.isPast(sel),
-           let disk = Persistence.load(Timetable.self, key: "timetable_\(sel.id)"), !disk.isEmpty {
+        if !forceReload, NTUETerm.isPast(target),
+           let disk = Persistence.load(Timetable.self, key: "timetable_\(key)"), !disk.isEmpty {
             cache[key] = disk
-            timetable = disk
-            return
+            show(disk, for: target)
+            return true
         }
 
         isLoading = true
         errorMessage = nil
+        defer { isLoading = false }
         do {
-            // The default semester is shared with 首頁 via DataStore (prefetched);
-            // an explicit semester switch always hits the network fresh.
+            // 本學期和首頁共用 DataStore(已預抓);明確切學期則直接打新的。
             let page: NTUEService.SchedulePage
             if selection == nil {
                 page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
-                if !page.timetable.isEmpty || timetable.isEmpty { timetable = page.timetable }
             } else {
                 page = try await service.loadTimetable(for: selection, studentId: studentId)
-                timetable = page.timetable
             }
-            if !page.timetable.isEmpty {
-                cache[key] = page.timetable
-                if let id = page.selected?.id { cache[id] = page.timetable }
-                if let sel = selection, NTUETerm.isPast(sel) {
-                    Persistence.save(page.timetable, key: "timetable_\(sel.id)")
-                }
-            }
+            if Task.isCancelled { return false }   // 使用者已經切到別的學期了
+
             if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }
             selected = page.selected
+            if !page.timetable.isEmpty {
+                cache[key] = page.timetable
+                if NTUETerm.isPast(target) {
+                    Persistence.save(page.timetable, key: "timetable_\(key)")
+                }
+            }
+            // 明確切學期 → 一定要換掉畫面,不能掛著上一個學期的課表假裝是這學期的。
+            // 本學期載入回空的(學校還沒放課表)→ 先留著開機畫的舊快取,呼叫端
+            // 會改看上一個學期。
+            if selection != nil || !page.timetable.isEmpty || timetable.isEmpty {
+                show(page.timetable, for: target)
+            }
+            return !page.timetable.isEmpty
         } catch {
+            if Task.isCancelled || error.isCancellation { return false }
             errorMessage = error.localizedDescription
+            // 切學期失敗同樣要清掉 —— 否則畫面會停在上一個學期,看起來像沒切成功。
+            if selection != nil { show(Timetable(periods: []), for: target) }
+            return false
         }
-        isLoading = false
+    }
+
+    private func show(_ new: Timetable, for selection: SemesterSelection) {
+        timetable = new
+        shownID = selection.id
+    }
+
+    /// 沒有任何學期有課表時,把開機時先畫上去的舊快取收掉 —— 不然畫面會是
+    /// 上學期的課表配上本學期的標題。
+    func showEmpty(for selection: SemesterSelection) {
+        show(Timetable(periods: []), for: selection)
     }
 
     /// Weekdays (1...7) that actually have sessions; defaults to Mon–Fri.
@@ -65,6 +112,13 @@ final class ScheduleViewModel {
     /// Only periods that have at least one session, keeps the grid compact.
     var visiblePeriods: [TimetablePeriod] {
         timetable.periods.filter { !$0.slots.isEmpty }
+    }
+}
+
+private extension Error {
+    /// 被新的學期切換取消掉的請求,不算錯誤,不要跳「載入失敗」。
+    var isCancellation: Bool {
+        self is CancellationError || (self as? URLError)?.code == .cancelled
     }
 }
 
@@ -82,16 +136,32 @@ struct ScheduleView: View {
         return NTUETerm.upToCurrent(base)
     }
 
+    /// 目前選的學期。找不到就直接從 id 還原,絕不退回 `vm.selected` ——
+    /// 那會默默載入「上一個看過的學期」,讓切換看起來沒有反應。
+    private var currentSelection: SemesterSelection {
+        semesterList.first { $0.id == selectedID }
+            ?? SemesterSelection(id: selectedID)
+            ?? vm.selected
+            ?? NTUETerm.currentSemester()
+    }
+
+    /// 畫面上這份課表是不是「現在選的學期」的。開機時先畫的舊快取(`shownID`
+    /// 還是 nil)算「還不確定」,先讓它留著。
+    private var showsSelectedSemester: Bool {
+        vm.shownID == nil || vm.shownID == selectedID
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !semesterList.isEmpty && !selectedID.isEmpty {
-                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID)
+                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID,
+                            isLoading: vm.isLoading)
                     .onChange(of: selectedID) { _, id in
                         guard id != loadedID else { return }
                         Task { await pick(id) }
                     }
             }
-            if !vm.timetable.isEmpty {
+            if !vm.timetable.isEmpty && showsSelectedSemester {
                 Picker("檢視", selection: $mode) {
                     ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -100,7 +170,9 @@ struct ScheduleView: View {
                 .padding(.vertical, 10)
             }
             Group {
-                if vm.isLoading && vm.timetable.isEmpty {
+                // 換學期時舊的課表要讓位給 spinner —— 學校那邊一次要 ~10 秒,
+                // 繼續顯示上一個學期會讓人以為切換壞掉了。
+                if vm.isLoading && (vm.timetable.isEmpty || !showsSelectedSemester) {
                     ProgressView("載入課表…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = vm.errorMessage, vm.timetable.isEmpty {
                     errorState(error)
@@ -118,30 +190,54 @@ struct ScheduleView: View {
     }
 
     private func initialLoad() async {
-        guard selectedID.isEmpty else { return }   // run once
-        await reload()
-        // Default to the newest semester (current); if that differs from what the
-        // default load returned, the bar's onChange will correct it.
-        selectedID = semesterList.last?.id ?? vm.selected?.id ?? ""
-        loadedID = vm.selected?.id ?? ""
+        guard loadedID == nil else { return }   // run once
+        let current = NTUETerm.currentSemester()
+        var shown = current
+        // 本學期(和首頁共用的那份)。學校在學期初還沒放課表時會是空的。
+        if await reload(current) == false, vm.errorMessage == nil {
+            if let fallback = await newestSemesterWithTimetable(before: current) {
+                shown = fallback
+            } else if vm.errorMessage == nil {
+                vm.showEmpty(for: current)
+            }
+        }
+        loadedID = shown.id
+        selectedID = shown.id
+    }
+
+    /// 學期初學校還沒放本學期課表時,往前找最近一個有課表的學期來顯示 ——
+    /// 標題寫著本學期、內容卻是上學期的,比直接顯示上學期還糟。
+    private func newestSemesterWithTimetable(before current: SemesterSelection) async -> SemesterSelection? {
+        var candidate = current
+        for _ in 0..<2 {   // 最多往前兩個學期(上學期 / 再上一個)
+            guard let previous = NTUETerm.previousSemester(before: candidate),
+                  semesterList.contains(previous) else { return nil }
+            if await reload(previous) { return previous }
+            if vm.errorMessage != nil { return nil }   // 連不上就別再往前試了
+            candidate = previous
+        }
+        return nil
     }
 
     private func pick(_ id: String) async {
         loadedID = id
-        await reload(semesterList.first { $0.id == id })
+        await reload(currentSelection)
     }
 
-    private func reload(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
-        await vm.load(selection ?? vm.selected, studentId: appState.studentInfo.studentId, forceReload: forceReload)
+    @discardableResult
+    private func reload(_ selection: SemesterSelection, forceReload: Bool = false) async -> Bool {
+        // 本學期走 DataStore(首頁、小工具、上課提醒共用同一份);其他學期直接打。
+        let target = selection == NTUETerm.currentSemester() ? nil : selection
+        return await vm.load(target, studentId: appState.studentInfo.studentId, forceReload: forceReload)
     }
 
     @ViewBuilder
     private var content: some View {
         switch mode {
         case .grid: TimetableGridView(periods: vm.visiblePeriods, weekdays: vm.activeWeekdays)
-            .refreshable { await reload(forceReload: true) }
+            .refreshable { await reload(currentSelection, forceReload: true) }
         case .list: CourseListView(courses: vm.timetable.courseSummaries)
-            .refreshable { await reload(forceReload: true) }
+            .refreshable { await reload(currentSelection, forceReload: true) }
         }
     }
 
@@ -149,7 +245,8 @@ struct ScheduleView: View {
         ContentUnavailableView {
             Label("載入失敗", systemImage: "wifi.slash")
         } description: { Text(error) } actions: {
-            Button("重試") { Task { await reload() } }.buttonStyle(.borderedProminent)
+            Button("重試") { Task { await reload(currentSelection, forceReload: true) } }
+                .buttonStyle(.borderedProminent)
         }
     }
 

@@ -29,8 +29,27 @@ final class DataStore {
     private(set) var cachedAssignments: MoodleService.AssignmentsPage?
     private(set) var cachedAnnouncements: MoodleService.AnnouncementsPage?
 
+    /// `cachedTimetable` 是哪個學期的。學期初學校還沒把新學期的課表放上來時,
+    /// 這裡拿到的是空的,我們不會用空資料覆寫快取 —— 所以得記著手上這份其實
+    /// 是「上學期」的,首頁/小工具/上課提醒才不會把上學期的課當成今天的課。
+    /// `nil` = 舊版留下來的快取,不知道是哪學期。
+    private(set) var cachedTimetableSemester: String?
+
+    /// 手上的課表是不是本學期的。不知道就當作是 —— 寧可顯示可能過期的課表,
+    /// 也不要平白清空一份真的資料(和 `AcademicCalendar.isInSession` 同一套邏輯)。
+    var cachedTimetableIsCurrent: Bool {
+        cachedTimetableSemester.map { $0 == NTUETerm.currentSemester().id } ?? true
+    }
+
+    /// 給小工具、Live Activity、上課提醒用的課表:只有確定是本學期的才算數。
+    /// 學期初學校還沒放新課表時回 `nil`,寧可空著也不要排上學期的課。
+    var currentSemesterTimetable: Timetable? {
+        cachedTimetableIsCurrent ? cachedTimetable : nil
+    }
+
     private init() {
         cachedTimetable = Persistence.load(Timetable.self, for: .timetable)
+        cachedTimetableSemester = Persistence.load(String.self, for: .timetableSemester)
         cachedDeadlines = Persistence.load([MoodleDeadline].self, for: .moodleDeadlines)
         cachedGrades = Persistence.load(NTUEService.GradesPage.self, for: .grades)
         cachedAssignments = Persistence.load(MoodleService.AssignmentsPage.self, for: .moodleAssignments)
@@ -51,9 +70,19 @@ final class DataStore {
             if page.timetable.isEmpty {
                 // Likely a logged-out redirect — don't cache; let the next call retry.
                 timetableTask = nil
+                // 但如果手上那份明明是「上學期」的,就是學校還沒放本學期課表 ——
+                // 把小工具和上課提醒裡的舊課清掉(兩者都只吃本學期的課表)。
+                // 登出被導回登入頁時快取仍標記為本學期,不會誤清。
+                if !cachedTimetableIsCurrent {
+                    WidgetBridge.updateFromCache()
+                    Task { await NotificationManager.shared.refreshClassRemindersFromCache() }
+                }
             } else {
+                let semesterID = (page.selected ?? NTUETerm.currentSemester()).id
                 cachedTimetable = page.timetable
+                cachedTimetableSemester = semesterID
                 Persistence.save(page.timetable, for: .timetable)
+                Persistence.save(semesterID, for: .timetableSemester)
                 WidgetBridge.update(timetable: page.timetable, deadlines: cachedDeadlines)
                 // Re-arm 上課提醒 from the freshest timetable (no-op if the feature is off).
                 Task { await NotificationManager.shared.rescheduleClassReminders(from: page.timetable) }
@@ -98,7 +127,7 @@ final class DataStore {
             } else {
                 cachedDeadlines = result
                 Persistence.save(result, for: .moodleDeadlines)
-                WidgetBridge.update(timetable: cachedTimetable, deadlines: result)
+                WidgetBridge.update(timetable: currentSemesterTimetable, deadlines: result)
                 // Re-arm local deadline reminders from the freshest list (no-op if off).
                 Task { await NotificationManager.shared.rescheduleDeadlines(result) }
             }
@@ -176,6 +205,7 @@ final class DataStore {
         assignmentsTask?.cancel(); assignmentsTask = nil
         announcementsTask?.cancel(); announcementsTask = nil
         cachedTimetable = nil
+        cachedTimetableSemester = nil
         cachedDeadlines = nil
         cachedGrades = nil
         cachedAssignments = nil

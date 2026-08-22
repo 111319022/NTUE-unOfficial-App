@@ -11,6 +11,8 @@ enum Persistence {
     enum Key: String {
         case studentInfo
         case timetable
+        /// 上面那份 `timetable` 是哪個學期的(`SemesterSelection.id`,例 "114-2")。
+        case timetableSemester
         case moodleDeadlines
         case grades
         case moodleAssignments

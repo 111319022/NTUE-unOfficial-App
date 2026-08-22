@@ -14,8 +14,10 @@ enum WidgetBridge {
     }
 
     /// Convenience that reads whatever the `DataStore` currently has cached.
+    /// 只餵「確定是本學期」的課表 —— 學期初學校還沒放新課表時,快取裡還是上
+    /// 學期的,小工具寧可空著也不該把上學期的課排成今天的課。
     @MainActor static func updateFromCache() {
-        update(timetable: DataStore.shared.cachedTimetable,
+        update(timetable: DataStore.shared.currentSemesterTimetable,
                deadlines: DataStore.shared.cachedDeadlines)
     }
 

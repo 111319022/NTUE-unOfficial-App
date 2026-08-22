@@ -6,10 +6,16 @@ final class HomeViewModel {
     var timetable = Timetable(periods: [])
     var isLoading = false
     var errorMessage: String?
+    /// 手上這份課表不是本學期的(學期初學校還沒放新課表,快取還停在上學期)。
+    /// 為真時首頁不拿它當「今天的課」用 —— 那是上學期的課。
+    private(set) var isStale = false
 
     init() {
         // Paint instantly from the last-known timetable; .task refreshes it.
-        if let cached = DataStore.shared.cachedTimetable { timetable = cached }
+        if let cached = DataStore.shared.cachedTimetable {
+            timetable = cached
+            isStale = !DataStore.shared.cachedTimetableIsCurrent
+        }
     }
 
     func load(studentId: String, forceReload: Bool = false) async {
@@ -18,7 +24,13 @@ final class HomeViewModel {
         do {
             let page = try await DataStore.shared.timetable(studentId: studentId, forceReload: forceReload)
             // Keep showing cached data if a refresh transiently returns nothing.
-            if !page.timetable.isEmpty || timetable.isEmpty { timetable = page.timetable }
+            if !page.timetable.isEmpty || timetable.isEmpty {
+                timetable = page.timetable
+                isStale = false
+            } else {
+                // 本學期回空的 → 留著的是上學期那份,標記起來別當今天的課用。
+                isStale = !DataStore.shared.cachedTimetableIsCurrent
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -184,6 +196,10 @@ struct HomeView: View {
         return (false, 0)
     }
 
+    /// 今天不該顯示任何課:放假中,或已經開學但學校還沒放本學期課表(手上那份
+    /// 是上學期的)。兩種情況都不能把課排進「今日課表」。
+    private var hidesClasses: Bool { breakInfo.inBreak || vm.isStale }
+
     @ViewBuilder
     private var heroCard: some View {
         if breakInfo.inBreak {
@@ -195,9 +211,20 @@ struct HomeView: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-        } else if vm.isLoading && vm.timetable.isEmpty {
+        } else if vm.isLoading && (vm.timetable.isEmpty || vm.isStale) {
             heroShell(background: Theme.accentFill) {
                 HStack { ProgressView().tint(.white); Text("載入課表…").foregroundStyle(.white.opacity(0.9)) }
+            }
+        } else if vm.isStale {
+            // 已經開學,但學校那邊還沒把本學期課表放上來。手上那份是上學期的,
+            // 顯示它只會害人跑錯教室 —— 說清楚在等什麼就好。
+            heroShell(background: Theme.cardBackground) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("本學期課表尚未公布", systemImage: "calendar.badge.clock")
+                        .font(.headline).foregroundStyle(Theme.accent)
+                    Text("學校放上來之後會自動更新;要看上學期的課請到「我的課表」。")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
             }
         } else if let next = vm.nextSession {
             heroShell(background: Theme.accentFill) {
@@ -249,7 +276,7 @@ struct HomeView: View {
 
     private var summaryStrip: some View {
         HStack(spacing: 10) {
-            statCard(breakInfo.inBreak ? "0" : "\(vm.todaySessions.count)", "今日課程", color: .primary)
+            statCard(hidesClasses ? "0" : "\(vm.todaySessions.count)", "今日課程", color: .primary)
             statCard("\(moodle.deadlines.count)", "待繳作業",
                      color: moodle.deadlines.isEmpty ? .secondary : Theme.amber)
             countdownStat
@@ -405,7 +432,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var todaySection: some View {
-        if !breakInfo.inBreak, !vm.todaySessions.isEmpty {
+        if !hidesClasses, !vm.todaySessions.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("今日課表").font(.headline).padding(.leading, 4)
                 ForEach(vm.todaySessions) { s in
@@ -432,7 +459,7 @@ struct HomeView: View {
     /// Previews the next class day once today's classes are done.
     @ViewBuilder
     private var tomorrowSection: some View {
-        if !breakInfo.inBreak, vm.nextSession == nil, let up = vm.upcomingDay {
+        if !hidesClasses, vm.nextSession == nil, let up = vm.upcomingDay {
             VStack(alignment: .leading, spacing: 10) {
                 Text(up.label).font(.headline).padding(.leading, 4)
                 ForEach(up.sessions) { s in

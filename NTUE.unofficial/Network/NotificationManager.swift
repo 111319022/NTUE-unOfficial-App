@@ -159,8 +159,10 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Re-run 上課提醒 scheduling from the DataStore's cached timetable.
+    /// 只認本學期的課表 —— 學期初學校還沒放新課表時,快取裡是上學期的,拿來
+    /// 排提醒會在早上八點叫人去上一堂根本沒有的課。
     func refreshClassRemindersFromCache() async {
-        await rescheduleClassReminders(from: DataStore.shared.cachedTimetable)
+        await rescheduleClassReminders(from: DataStore.shared.currentSemesterTimetable)
     }
 
     /// Remove everything we scheduled (e.g. on logout or when disabled).
