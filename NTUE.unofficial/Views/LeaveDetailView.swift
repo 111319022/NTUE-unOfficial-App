@@ -11,8 +11,13 @@ final class LeaveDetailViewModel {
 
     private let service = NTUEService.shared
     private var cache: [String: NTUEService.LeavePage] = [:]
+    private let loader = LatestTask()
 
     func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        await loader.run { [self] in await performLoad(selection, forceReload: forceReload) }
+    }
+
+    private func performLoad(_ selection: SemesterSelection?, forceReload: Bool) async {
         let key = selection?.id ?? "default"
         if !forceReload, let cached = cache[key] { apply(cached); return }
         // Past semesters are final → use the on-disk snapshot (semesters list is
@@ -25,8 +30,10 @@ final class LeaveDetailViewModel {
         records = []          // show the loading state while the slow fetch runs
         isLoading = true
         errorMessage = nil
+        defer { isLoading = false }
         do {
             let page = try await service.loadLeaveRecords(for: selection)
+            if Task.isCancelled { return }   // 使用者已經切到別的學期了
             cache[key] = page
             if let id = page.selected?.id { cache[id] = page }
             apply(page)
@@ -34,9 +41,9 @@ final class LeaveDetailViewModel {
                 Persistence.save(page.records, key: "leave_\(sel.id)")
             }
         } catch {
+            if Task.isCancelled || error.isRequestCancellation { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 
     private func apply(_ page: NTUEService.LeavePage) {
@@ -55,8 +62,13 @@ final class AbsenceViewModel {
 
     private let service = NTUEService.shared
     private var cache: [String: [AbsenceRecord]] = [:]
+    private let loader = LatestTask()
 
     func load(for selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        await loader.run { [self] in await performLoad(selection, forceReload: forceReload) }
+    }
+
+    private func performLoad(_ selection: SemesterSelection?, forceReload: Bool) async {
         let key = selection?.id ?? "default"
         if !forceReload, let cached = cache[key] { records = cached; return }
         if !forceReload, let sel = selection, NTUETerm.isPast(sel),
@@ -67,15 +79,19 @@ final class AbsenceViewModel {
         records = []
         isLoading = true
         errorMessage = nil
+        defer { isLoading = false }
         do {
             let result = try await service.loadAbsences(for: selection)
+            if Task.isCancelled { return }
             cache[key] = result
             records = result
             if let sel = selection, NTUETerm.isPast(sel) {
                 Persistence.save(result, key: "absence_\(sel.id)")
             }
-        } catch { errorMessage = error.localizedDescription }
-        isLoading = false
+        } catch {
+            if Task.isCancelled || error.isRequestCancellation { return }
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -101,7 +117,8 @@ struct AttendanceView: View {
     var body: some View {
         VStack(spacing: 0) {
             if !options.isEmpty && !selectedID.isEmpty {
-                SemesterBar(options: options, selectedID: $selectedID)
+                SemesterBar(options: options, selectedID: $selectedID,
+                            isLoading: mode == .leave ? leaveVM.isLoading : absenceVM.isLoading)
                     .onChange(of: selectedID) { _, _ in Task { await ensureLoaded() } }
             }
             Picker("", selection: $mode) {

@@ -4,7 +4,10 @@ import SwiftSoup
 /// Parsing helpers for md.ntue.edu.tw (Moodle). Two kinds of input:
 /// 1. The `M.cfg.sesskey` token embedded in every logged-in page.
 /// 2. The HTML table on `/mod/assign/index.php?id=<course>` (one row per assignment).
-enum MoodleParser {
+/// `nonisolated`:專案的 default isolation 是 MainActor,不標的話這個純粹的
+/// 剖析器會被綁在主執行緒上 —— 於是每一門課的 HTML 都要跳回主執行緒解析,
+/// 平行抓取的意義也少了一半。它沒有任何狀態,本來就不需要隔離。
+nonisolated enum MoodleParser {
 
     /// Extracts the AJAX session key from a logged-in Moodle page.
     static func sesskey(from html: String) -> String? {

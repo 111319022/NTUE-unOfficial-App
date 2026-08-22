@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One enrolled Moodle course (e.g. `1142_0328_電腦網路`).
-struct MoodleCourse: Identifiable, Hashable, Codable {
+nonisolated struct MoodleCourse: Identifiable, Hashable, Codable {
     let id: Int
     let fullName: String
     let shortName: String
@@ -20,7 +20,7 @@ struct MoodleCourse: Identifiable, Hashable, Codable {
 }
 
 /// Submission state for one assignment, derived from the Moodle index table.
-enum MoodleSubmissionState {
+nonisolated enum MoodleSubmissionState {
     case submitted          // 已繳交…
     case draft              // 草稿（尚未繳交）
     case notSubmitted       // 未繳交 / 沒有繳交的作業
@@ -44,7 +44,7 @@ enum MoodleSubmissionState {
 }
 
 /// One assignment row in a course's `/mod/assign/index.php` table.
-struct MoodleAssignment: Identifiable, Hashable, Codable {
+nonisolated struct MoodleAssignment: Identifiable, Hashable, Codable {
     let id: Int             // module id → /mod/assign/view.php?id=
     let name: String
     let dueDate: Date?
@@ -69,7 +69,7 @@ struct MoodleAssignment: Identifiable, Hashable, Codable {
 }
 
 /// Assignments grouped under one course (for the 作業 tab).
-struct MoodleCourseAssignments: Identifiable, Codable {
+nonisolated struct MoodleCourseAssignments: Identifiable, Codable {
     let course: MoodleCourse
     let assignments: [MoodleAssignment]
     var id: Int { course.id }
@@ -80,7 +80,7 @@ struct MoodleCourseAssignments: Identifiable, Codable {
 }
 
 /// One course announcement (a discussion in a course's 公告 forum).
-struct MoodleAnnouncement: Identifiable, Hashable, Codable {
+nonisolated struct MoodleAnnouncement: Identifiable, Hashable, Codable {
     let id: Int            // discussion id → /mod/forum/discuss.php?d=
     let courseName: String
     let subject: String
@@ -92,7 +92,7 @@ struct MoodleAnnouncement: Identifiable, Hashable, Codable {
 }
 
 /// A single upcoming deadline for the 首頁 widget (from the calendar action events).
-struct MoodleDeadline: Identifiable, Hashable, Codable {
+nonisolated struct MoodleDeadline: Identifiable, Hashable, Codable {
     let id: Int
     let name: String
     let courseName: String

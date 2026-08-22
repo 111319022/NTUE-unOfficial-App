@@ -27,19 +27,27 @@ struct AuthService {
     private static let sessionCheckURL = "https://nsa.ntue.edu.tw/AstarProxy/IsServiceWorking.aspx"
 
     func login(username: String, password: String) async throws {
-        // iNTUE OIDC client.
-        try await Self.performOIDCLogin(
-            client: client,
-            username: username, password: password,
-            clientId: "alltop", redirectURI: Self.redirectURI
-        )
+        // 換帳號後舊的 CSRF token / view id 一定失效,先整包丟掉。
+        await NTUESessionCache.shared.clear()
 
-        // Verify we are *actually* authenticated.
-        // NOTE: IsServiceWorking.aspx returns Working=1 even when logged out, so it
-        // cannot be used to confirm login. Instead we check that an authenticated
-        // page yields real student data.
-        if !(await isAuthenticated()) {
-            throw AuthError.loginFailed("帳號或密碼錯誤")
+        // 登入是「抓表單 → 送帳密 → 驗證」的一整段流程,整段佔一個佇列名額。
+        // 裡面要呼叫沒排隊的 `checkAuthenticated()`,不是排隊版的
+        // `isAuthenticated()` —— 後者會在自己已經佔著名額時再去搶第二個。
+        try await RequestQueue.ntue.run {
+            // iNTUE OIDC client.
+            try await Self.performOIDCLogin(
+                client: client,
+                username: username, password: password,
+                clientId: "alltop", redirectURI: Self.redirectURI
+            )
+
+            // Verify we are *actually* authenticated.
+            // NOTE: IsServiceWorking.aspx returns Working=1 even when logged out, so it
+            // cannot be used to confirm login. Instead we check that an authenticated
+            // page yields real student data.
+            if !(await checkAuthenticated()) {
+                throw AuthError.loginFailed("帳號或密碼錯誤")
+            }
         }
     }
 
@@ -71,14 +79,25 @@ struct AuthService {
     }
 
     /// True only when an authenticated iNTUE page returns real student data.
+    /// 排隊版本 —— 給外部呼叫。已經佔著佇列的流程請改用 `checkAuthenticated()`。
     func isAuthenticated() async -> Bool {
+        (try? await RequestQueue.ntue.run { await checkAuthenticated() }) ?? false
+    }
+
+    /// 不排隊的本體,給已經佔住佇列的 `login()` 內部使用。
+    private func checkAuthenticated() async -> Bool {
         guard let html = try? await client.get("\(NTUEClient.base)/a05/a052A0") else { return false }
         // A logged-out request is redirected to the portal login (no 學號 / form-group header).
+        // 順手把這一頁的 CSRF token 記下來,之後第一次切學期就能直接查、少等一趟。
+        if let token = NTUEParser.csrfToken(from: html) {
+            await NTUESessionCache.shared.store(token: token)
+        }
         return !NTUEParser.studentInfo(from: html).isEmpty
     }
 
     func logout() {
         client.clearCookies()
+        Task { await NTUESessionCache.shared.clear() }
     }
 
     // MARK: - HTML form parsing
@@ -152,7 +171,9 @@ struct AuthService {
 
 // MARK: - Keychain helper
 
-enum KeychainHelper {
+/// 無狀態的 Keychain 包裝 —— `nonisolated` 讓背景流程(例如 Moodle 重新登入)
+/// 讀憑證時不必跳回主執行緒。
+nonisolated enum KeychainHelper {
     static func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }
         let query: [String: Any] = [

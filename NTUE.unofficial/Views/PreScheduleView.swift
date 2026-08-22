@@ -11,18 +11,29 @@ final class PreScheduleViewModel {
 
     private let service = NTUEService.shared
     private var cache: [String: [SelectedCourse]] = [:]   // key "<semId>|<stage>"
+    private let loader = LatestTask()
 
     func load(stage: SelectionStage, selection: SemesterSelection?, forceReload: Bool = false) async {
+        await loader.run { [self] in
+            await performLoad(stage: stage, selection: selection, forceReload: forceReload)
+        }
+    }
+
+    private func performLoad(stage: SelectionStage, selection: SemesterSelection?, forceReload: Bool) async {
         let key = "\(selection?.id ?? "default")|\(stage.rawValue)"
         if !forceReload, let cached = cache[key] {
             schedule = PreSchedule(cached)
             return
         }
+        // 換學期或換階段時先把上一份收掉 —— 學校要等 ~10 秒,繼續顯示上一個
+        // 階段的結果會讓人以為切換沒生效。
+        schedule = PreSchedule([])
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let page = try await service.loadCourseSelection(stage: stage, for: selection)
+            if Task.isCancelled { return }   // 使用者已經切到別的學期/階段了
             cache[key] = page.courses
             if let sel = page.selected {
                 cache["\(sel.id)|\(stage.rawValue)"] = page.courses
@@ -31,6 +42,7 @@ final class PreScheduleViewModel {
             if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }
             selected = page.selected
         } catch {
+            if Task.isCancelled || error.isRequestCancellation { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -73,7 +85,8 @@ struct PreScheduleView: View {
     var body: some View {
         VStack(spacing: 0) {
             if !semesterList.isEmpty, !selectedID.isEmpty {
-                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID)
+                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID,
+                            isLoading: vm.isLoading)
                     .onChange(of: selectedID) { _, _ in Task { await reload() } }
             }
 

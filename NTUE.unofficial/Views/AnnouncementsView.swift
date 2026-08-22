@@ -8,31 +8,57 @@ final class AnnouncementsViewModel {
     var errorMessage: String?
 
     var announcements: [MoodleAnnouncement] { page?.announcements ?? [] }
-    var semesters: [SemesterSelection] { page?.semesters ?? [] }
-    var newestID: String? { page?.semesters.last?.id }
 
-    func loadDefault(forceReload: Bool = false) async {
-        // Cold launch: paint the last-known page from disk while refreshing.
-        if page == nil, !forceReload, let disk = DataStore.shared.cachedAnnouncements {
-            page = disk
-        }
-        isLoading = true; errorMessage = nil
-        do { page = try await DataStore.shared.moodleAnnouncements(forceReload: forceReload) }
-        catch { errorMessage = error.localizedDescription }
-        isLoading = false
-    }
+    /// 學期清單獨立存放,切學期時 `page` 會先歸零讓畫面顯示載入中,清單不能
+    /// 跟著消失 —— 否則整條切換列會在載入時不見再冒出來。
+    private(set) var semesters: [SemesterSelection] = []
+    var newestID: String? { semesters.last?.id }
 
     private var cache: [String: MoodleService.AnnouncementsPage] = [:]
+    private let loader = LatestTask()
+
+    func loadDefault(forceReload: Bool = false) async {
+        await loader.run { [self] in
+            // Cold launch: paint the last-known page from disk while refreshing.
+            if page == nil, !forceReload, let disk = DataStore.shared.cachedAnnouncements {
+                apply(disk)
+            }
+            isLoading = true; errorMessage = nil
+            defer { isLoading = false }
+            do {
+                let result = try await DataStore.shared.moodleAnnouncements(forceReload: forceReload)
+                if Task.isCancelled { return }
+                apply(result)
+            } catch {
+                if Task.isCancelled || error.isRequestCancellation { return }
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
 
     func load(for selection: SemesterSelection) async {
-        if let cached = cache[selection.id] { page = cached; return }
-        isLoading = true; errorMessage = nil
-        do {
-            let result = try await MoodleService.shared.loadAnnouncements(for: selection)
-            cache[selection.id] = result
-            page = result
-        } catch { errorMessage = error.localizedDescription }
-        isLoading = false
+        await loader.run { [self] in
+            if let cached = cache[selection.id] { apply(cached); return }
+            // 切學期先把上一個學期的公告收掉 —— Moodle 這一趟要抓每一門課,
+            // 掛著舊資料會讓人以為沒切成功。
+            page = nil
+            isLoading = true; errorMessage = nil
+            defer { isLoading = false }
+            do {
+                let result = try await MoodleService.shared.loadAnnouncements(for: selection)
+                if Task.isCancelled { return }
+                cache[selection.id] = result
+                apply(result)
+            } catch {
+                if Task.isCancelled || error.isRequestCancellation { return }
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func apply(_ result: MoodleService.AnnouncementsPage) {
+        page = result
+        if !result.semesters.isEmpty { semesters = result.semesters }   // 只增不減
     }
 }
 
@@ -49,7 +75,8 @@ struct AnnouncementsView: View {
     var body: some View {
         VStack(spacing: 0) {
             if !semesterList.isEmpty {
-                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID)
+                SemesterBar(options: semesterList.map(\.option), selectedID: $selectedID,
+                            isLoading: vm.isLoading)
                     .onChange(of: selectedID) { _, id in
                         guard id != loadedID else { return }
                         Task { await pick(id) }

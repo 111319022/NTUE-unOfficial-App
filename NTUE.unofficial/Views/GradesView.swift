@@ -10,14 +10,23 @@ final class GradesViewModel {
     var isLoading = false
     var errorMessage: String?
 
+    /// 畫面上這份成績是「哪一個學期的」。`nil` = 還沒確定(開機時先畫的舊快取),
+    /// 用來判斷該不該讓位給 spinner。
+    private(set) var shownID: String?
+
     private let service = NTUEService.shared
     private var cache: [String: NTUEService.GradesPage] = [:]   // keyed by semester id
+    private let loader = LatestTask()
 
     func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
+        await loader.run { [self] in await performLoad(selection, forceReload: forceReload) }
+    }
+
+    private func performLoad(_ selection: SemesterSelection?, forceReload: Bool) async {
         let key = selection?.id ?? "default"
         if !forceReload, let cached = cache[key] {   // instant re-visit
             errorMessage = nil
-            apply(cached)
+            apply(cached, shownID: selection?.id ?? cached.selected?.id)
             return
         }
 
@@ -25,31 +34,41 @@ final class GradesViewModel {
         // network refresh runs, so the screen isn't blank.
         if selection == nil, !forceReload, grades.isEmpty,
            let disk = DataStore.shared.cachedGrades {
-            apply(disk)
+            apply(disk, shownID: nil)
+        }
+
+        // 明確切學期 → 先把上一個學期的成績收掉。學校要等 ~10 秒,繼續掛著舊
+        // 資料會讓人以為根本沒切成功。
+        if let selection, shownID != selection.id {
+            grades = []
+            shownID = nil
         }
 
         isLoading = true
         errorMessage = nil
+        defer { isLoading = false }
         do {
             // Default semester is prefetched/shared via DataStore; a semester
             // switch fetches fresh.
             let page = selection == nil
                 ? try await DataStore.shared.grades(forceReload: forceReload)
                 : try await service.loadGrades(for: selection)
+            if Task.isCancelled { return }   // 使用者已經切到別的學期了
             cache[key] = page
             if let id = page.selected?.id { cache[id] = page }
-            apply(page)
+            apply(page, shownID: selection?.id ?? page.selected?.id)
         } catch {
+            if Task.isCancelled || error.isRequestCancellation { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 
-    private func apply(_ page: NTUEService.GradesPage) {
+    private func apply(_ page: NTUEService.GradesPage, shownID id: String?) {
         grades = page.grades
         if !page.student.isEmpty { student = page.student }
         if semesters.isEmpty, !page.semesters.isEmpty { semesters = page.semesters }   // never shrink
         selected = page.selected
+        shownID = id
     }
 
     // Summary stats (only courses that actually carry a numeric score).
@@ -93,7 +112,8 @@ struct GradesView: View {
     var body: some View {
         VStack(spacing: 0) {
             if !options.isEmpty && !selectedID.isEmpty {
-                SemesterBar(options: options, selectedID: $selectedID)
+                SemesterBar(options: options, selectedID: $selectedID,
+                            isLoading: selectedID == Self.allID ? transcriptVM.isLoading : vm.isLoading)
                     .onChange(of: selectedID) { _, id in
                         guard id != loadedID else { return }
                         Task { await select(id) }

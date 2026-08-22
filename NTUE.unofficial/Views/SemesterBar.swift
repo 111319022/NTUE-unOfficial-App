@@ -12,6 +12,11 @@ struct SemesterOption: Identifiable, Hashable {
 struct SemesterBar: View {
     let options: [SemesterOption]
     @Binding var selectedID: String
+    /// 正在載入所選學期的資料。學校那邊一次要 ~10 秒,沒有明確的指示,使用者
+    /// 會以為切換沒成功而一直按 —— 這裡把 spinner 直接放在切換器上。
+    /// 箭頭刻意「不」停用:配合各頁的取消機制,連按幾下只會載入最後停的那個
+    /// 學期,停用反而會讓連續往前翻變得很卡。
+    var isLoading: Bool = false
 
     private var index: Int? { options.firstIndex { $0.id == selectedID } }
     private var currentLabel: String { options.first { $0.id == selectedID }?.label ?? "—" }
@@ -34,10 +39,15 @@ struct SemesterBar: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "calendar")
+                    if isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "calendar")
+                    }
                     Text(currentLabel).font(.subheadline.bold())
                     Image(systemName: "chevron.down").font(.caption2)
                 }
+                .animation(.easeInOut(duration: 0.15), value: isLoading)
                 .foregroundStyle(Theme.accent)
                 .frame(maxWidth: .infinity)
             }

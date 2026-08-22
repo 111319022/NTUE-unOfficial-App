@@ -155,12 +155,18 @@ final class DataStore {
 
     /// Warm everything in the background right after login. Fire-and-forget;
     /// failures are ignored here (the screens surface their own errors on demand).
+    ///
+    /// 標成 `.background`:學校端一次只跑得動一個請求,預抓一次丟五個會把使用者
+    /// 當下按的那一個擠到最後面等好幾十秒。降級之後,使用者一按就插隊到前面
+    /// (見 `RequestQueue`),預抓則利用剩下的空檔慢慢跑完。
     func prefetch(studentId: String) {
-        Task { _ = try? await timetable(studentId: studentId) }
-        Task { _ = try? await grades() }
-        Task { _ = try? await moodleDeadlines() }
-        Task { _ = try? await moodleAssignments() }
-        Task { _ = try? await moodleAnnouncements() }
+        RequestQueue.$priority.withValue(.background) {
+            Task { _ = try? await timetable(studentId: studentId) }
+            Task { _ = try? await grades() }
+            Task { _ = try? await moodleDeadlines() }
+            Task { _ = try? await moodleAssignments() }
+            Task { _ = try? await moodleAnnouncements() }
+        }
     }
 
     func clear() {
