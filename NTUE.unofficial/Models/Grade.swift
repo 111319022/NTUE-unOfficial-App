@@ -81,8 +81,7 @@ enum NTUETerm {
     /// True if the semester has already ended (older than the current one), so
     /// its data is final and can be cached on disk indefinitely.
     static func isPast(_ sel: SemesterSelection, asOf date: Date = Date()) -> Bool {
-        let cur = currentSemester(asOf: date)
-        return (sel.year, sel.semester) < (cur.year, cur.semester)
+        return sel < currentSemester(asOf: date)
     }
 
     /// The 4-year span of semesters a student of `grade` should see, e.g. a
@@ -106,6 +105,22 @@ enum NTUETerm {
         return SemesterSelection(year: "\(currentAcademicYear(date))", semester: sem)
     }
 
+    /// The semester right before `sel` (上 → 前一學年下學期; 下/暑 → 同學年前一個).
+    /// Used to fall back when the current term has no grades posted yet.
+    static func previousSemester(before sel: SemesterSelection) -> SemesterSelection? {
+        switch sel.semester {
+        case "1":
+            guard let year = Int(sel.year) else { return nil }
+            return SemesterSelection(year: "\(year - 1)", semester: "2")
+        case "2":
+            return SemesterSelection(year: sel.year, semester: "1")
+        case "3":
+            return SemesterSelection(year: sel.year, semester: "2")
+        default:
+            return nil
+        }
+    }
+
     /// The next semester after the current one — the term 選課/預排 targets.
     /// 上學期 → 下學期 same 學年; 下學期 → next 學年 上學期.
     static func upcomingSemester(asOf date: Date = Date()) -> SemesterSelection {
@@ -122,14 +137,57 @@ enum NTUETerm {
     /// still hiding the empty far-future terms the page's <select> also lists.
     static func upToUpcoming(_ list: [SemesterSelection], asOf date: Date = Date()) -> [SemesterSelection] {
         let up = upcomingSemester(asOf: date)
-        return list.filter { ($0.year, $0.semester) <= (up.year, up.semester) }
+        return list.filter { $0 <= up }
     }
 
     /// Drops semesters in the future — a term only appears once it has begun.
     static func upToCurrent(_ list: [SemesterSelection], asOf date: Date = Date()) -> [SemesterSelection] {
         let cur = currentSemester(asOf: date)
-        return list.filter { ($0.year, $0.semester) <= (cur.year, cur.semester) }
+        return list.filter { $0 <= cur }
     }
+
+    /// 選課頁該預設顯示的學期。
+    ///
+    /// 選課是「學期末才選下一學期」,而且開學後還有三階/加退選,所以一個學期裡
+    /// 大部分時間該看的其實是「現在這個學期」;只有接近期末、選課真的開跑了,
+    /// 預設才切到下一學期。判斷順序:
+    ///  1. 行事曆上某學期填了「選課開始日」→ 取已到期的最新一個(最精確,而且
+    ///     在 CloudKit 改日期就好,不必發新版)。
+    ///  2. 知道本學期的課程結束日 → 期末前 `selectionLeadDays` 天開始切。
+    ///  3. 兩者都沒有 → 用月份推算(12–1 月切下學期、5–7 月切下學年上學期)。
+    ///
+    /// 不論哪一條,都不會早於目前學期(開學後仍在選課期,看的就是本學期)。
+    static func selectionSemester(asOf date: Date = Date(),
+                                  terms: [AcademicTerm] = AcademicCalendar.terms) -> SemesterSelection {
+        let cur = currentSemester(asOf: date)
+        let upcoming = upcomingSemester(asOf: date)
+
+        // 1) 行事曆明確標了選課開始日。
+        let opened = terms
+            .compactMap { t -> SemesterSelection? in
+                guard let start = t.selectionStart, start <= date else { return nil }
+                return SemesterSelection(termCode: t.code)
+            }
+            .max()
+        if let opened { return Swift.max(opened, cur) }
+
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+
+        // 2) 用本學期的課程結束日往前推。
+        if let term = terms.first(where: { $0.code == cur.termCode }),
+           let switchDate = cal.date(byAdding: .day, value: -selectionLeadDays, to: term.end16) {
+            return date >= cal.startOfDay(for: switchDate) ? upcoming : cur
+        }
+
+        // 3) 行事曆沒涵蓋 → 月份推算。
+        let month = cal.component(.month, from: date)
+        if cur.semester == "1" { return (month == 12 || month == 1) ? upcoming : cur }
+        return (5...7).contains(month) ? upcoming : cur
+    }
+
+    /// 選課大約在課程結束前幾天開跑(第一階段志願登錄),用來推算預設學期。
+    static let selectionLeadDays = 21
 }
 
 /// A selectable academic year + semester (scraped from the page's <select> options).
@@ -138,6 +196,23 @@ struct SemesterSelection: Identifiable, Hashable, Codable {
     var semester: String   // "1" 上學期 / "2" 下學期 / "3" 暑期
 
     var id: String { "\(year)-\(semester)" }
+
+    /// 行事曆/Moodle 用的學期代碼,例:114 上 → "1141"。
+    var termCode: String { "\(year)\(semester)" }
+
+    /// 由學期代碼還原,例 "1152" → 115 下。
+    init(year: String, semester: String) {
+        self.year = year
+        self.semester = semester
+    }
+
+    /// 由學期代碼還原,例 "1152" → 115 下;格式不符時回 nil。
+    init?(termCode: String) {
+        let digits = termCode.filter(\.isNumber)
+        guard digits.count >= 2 else { return nil }
+        self.year = String(digits.dropLast())
+        self.semester = String(digits.suffix(1))
+    }
 
     var semesterLabel: String {
         switch semester {
@@ -165,7 +240,16 @@ struct SemesterSelection: Identifiable, Hashable, Codable {
 
     /// Keep only 上/下學期 (drop 暑期/暑假) and sort oldest → newest.
     static func ordered(_ list: [SemesterSelection]) -> [SemesterSelection] {
-        list.filter { $0.semester == "1" || $0.semester == "2" }
-            .sorted { ($0.year, $0.semester) < ($1.year, $1.semester) }
+        list.filter { $0.semester == "1" || $0.semester == "2" }.sorted()
+    }
+}
+
+/// Chronological order. Compares numerically so a 2-digit 學年 ("99") still
+/// sorts before a 3-digit one ("114"), unlike a plain string compare.
+extension SemesterSelection: Comparable {
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        let l = (Int(lhs.year) ?? 0, Int(lhs.semester) ?? 0)
+        let r = (Int(rhs.year) ?? 0, Int(rhs.semester) ?? 0)
+        return l < r
     }
 }

@@ -15,7 +15,11 @@ final class GradesViewModel {
 
     func load(_ selection: SemesterSelection? = nil, forceReload: Bool = false) async {
         let key = selection?.id ?? "default"
-        if !forceReload, let cached = cache[key] { apply(cached); return }   // instant re-visit
+        if !forceReload, let cached = cache[key] {   // instant re-visit
+            errorMessage = nil
+            apply(cached)
+            return
+        }
 
         // Cold launch: paint the last-known default semester from disk while the
         // network refresh runs, so the screen isn't blank.
@@ -117,8 +121,21 @@ struct GradesView: View {
     private func initialLoad() async {
         guard loadedID == nil else { return }
         await vm.load()
+        await fallBackToPreviousIfEmpty()
         loadedID = vm.selected?.id ?? ""
         selectedID = loadedID ?? ""
+    }
+
+    /// 學期初本學期還沒登任何成績時,自動改看上一個學期。
+    /// 上一學期同樣沒有成績(例如大一新生)就維持原本的學期。
+    private func fallBackToPreviousIfEmpty() async {
+        guard vm.grades.isEmpty, vm.errorMessage == nil,
+              let current = vm.selected,
+              let previous = NTUETerm.previousSemester(before: current),
+              semesterList.contains(previous) else { return }
+
+        await vm.load(previous)
+        if vm.grades.isEmpty { await vm.load(current) }   // 兩個都空 → 回到原本學期(走快取)
     }
 
     private func select(_ id: String) async {
