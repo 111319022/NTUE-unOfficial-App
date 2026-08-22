@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct LoginView: View {
     @Environment(AppState.self) private var appState
@@ -13,78 +12,86 @@ struct LoginView: View {
 
     private enum Field { case account, password }
 
-    private var keyboardActive: Bool { focused != nil }
+    /// 回訪的人（Keychain 裡還留著上次的學號）看到的文案跟第一次來的不一樣。
+    private let isReturning = (KeychainHelper.load(key: "ntue_username")?.isEmpty == false)
+
+    private var keyboardUp: Bool { focused != nil }
+
+    /// 邊填欄位，樓裡的燈邊一盞一盞亮起來 —— 剩下的留給初始化畫面點完。
+    private var litWindows: Int {
+        3 + (username.isEmpty ? 0 : 3) + (password.isEmpty ? 0 : 3)
+    }
 
     var body: some View {
         ZStack {
-            MaroonMeshBackground()
-                .ignoresSafeArea()
+            Theme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                header
-                Spacer(minLength: 12)
-                panel
+                CampusScene(litWindows: litWindows, appeared: appeared)
+                    .frame(height: keyboardUp ? 156 : 262)
+                    .animation(.spring(duration: 0.42), value: keyboardUp)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        headline
+                        form
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
+
+                footer
             }
         }
-        .onAppear {
-            withAnimation(.spring(duration: 0.7, bounce: 0.2).delay(0.05)) {
-                appeared = true
-            }
-        }
+        .modifier(ShakeEffect(shakes: shakes))
+        .onAppear { appeared = true }
         .onChange(of: appState.loginError) { _, error in
             guard error != nil else { return }
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            AuthHaptic.failure()
             withAnimation(.linear(duration: 0.45)) { shakes += 1 }
         }
     }
 
-    // MARK: - Header
+    // MARK: - 標題
 
-    private var header: some View {
-        VStack(spacing: keyboardActive ? 8 : 16) {
-            Image(systemName: "graduationcap.fill")
-                .font(.system(size: keyboardActive ? 30 : 44))
-                .foregroundStyle(.white)
-                .frame(width: keyboardActive ? 64 : 92, height: keyboardActive ? 64 : 92)
-                .background(.white.opacity(0.12), in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-                .symbolEffect(.breathe.pulse.byLayer, options: .repeat(.continuous))
+    private var headline: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wordmark
+                .authReveal(appeared, 0)
 
-            VStack(spacing: 6) {
-                (Text("NTUE").foregroundStyle(.white)
-                 + Text(".unofficial").foregroundStyle(.white.opacity(0.55)))
-                    .font(.system(size: keyboardActive ? 24 : 32, weight: .bold, design: .rounded))
+            AuthTitle(text: isReturning ? "又見面了" : "先登入，\n才看得到你的課表")
+                .authReveal(appeared, 1)
 
-                if !keyboardActive {
-                    Text("國立臺北教育大學 · 非官方 App")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.75))
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
+            if !keyboardUp {
+                AuthBody(text: isReturning
+                         ? "登入之後，課表、成績和作業就會自己回到這裡。"
+                         : "用你在 iNTUE 校務系統（校園入口網）的同一組帳號密碼就可以了。")
+                    .authReveal(appeared, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.top, keyboardActive ? 16 : 48)
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : -16)
-        .animation(.spring(duration: 0.45), value: keyboardActive)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.spring(duration: 0.4), value: keyboardUp)
     }
 
-    // MARK: - Bottom panel
+    /// App 的字標。等寬字、幾乎不加字距，看起來像個名字，
+    /// 而不是被拆開來唸的字母。
+    private var wordmark: some View {
+        (Text("NTUE").foregroundStyle(Theme.accent)
+         + Text(".unofficial").foregroundStyle(Theme.accent.opacity(0.5)))
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .tracking(0.2)
+    }
 
-    private var panel: some View {
-        VStack(spacing: 18) {
-            HStack {
-                Text(username.isEmpty ? "開始使用" : "歡迎回來")
-                    .font(.title3.bold())
-                    .contentTransition(.opacity)
-                Spacer()
-            }
+    // MARK: - 表單
 
-            loginField(
-                title: "學號 / 帳號", systemImage: "person.fill",
-                isFocused: focused == .account
-            ) {
-                TextField("請輸入帳號", text: $username)
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            field(label: "學號", isFocused: focused == .account) {
+                TextField("例如 112345678", text: $username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.asciiCapable)
@@ -93,117 +100,128 @@ struct LoginView: View {
                     .submitLabel(.next)
                     .onSubmit { focused = .password }
             }
+            .authReveal(appeared, 3)
 
-            loginField(
-                title: "密碼", systemImage: "lock.fill",
-                isFocused: focused == .password
+            field(
+                label: "密碼",
+                isFocused: focused == .password,
+                accessory: password.isEmpty ? nil : (showPassword ? "隱藏" : "顯示"),
+                accessoryAction: {
+                    showPassword.toggle()
+                    focused = .password
+                }
             ) {
-                HStack(spacing: 8) {
-                    Group {
-                        if showPassword {
-                            TextField("請輸入密碼", text: $password)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        } else {
-                            SecureField("請輸入密碼", text: $password)
-                        }
-                    }
-                    .textContentType(.password)
-                    .focused($focused, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit(attemptLogin)
-
-                    if !password.isEmpty {
-                        Button {
-                            showPassword.toggle()
-                            focused = .password
-                        } label: {
-                            Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                        .buttonStyle(.plain)
+                Group {
+                    if showPassword {
+                        TextField("校園入口網密碼", text: $password)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } else {
+                        SecureField("校園入口網密碼", text: $password)
                     }
                 }
+                .textContentType(.password)
+                .focused($focused, equals: .password)
+                .submitLabel(.go)
+                .onSubmit(attemptLogin)
             }
+            .authReveal(appeared, 4)
 
             if let error = appState.loginError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.accent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                AuthNotice(text: error)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if !keyboardUp {
+                perks.transition(.opacity)
             }
-
-            loginButton
-
-            Label("帳密僅用於登入官方系統，加密存於本機 Keychain", systemImage: "shield.lefthalf.filled")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 24)
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .padding(.bottom, 24)
-        .frame(maxWidth: 520)
-        .frame(maxWidth: .infinity)
-        .background {
-            Theme.cardBackground
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 32, topTrailingRadius: 32, style: .continuous))
-                .ignoresSafeArea(.all, edges: .bottom)
-        }
-        .modifier(ShakeEffect(shakes: shakes))
         .animation(.spring(duration: 0.35), value: appState.loginError)
+        .animation(.spring(duration: 0.4), value: keyboardUp)
     }
 
-    private var loginButton: some View {
-        Button(action: attemptLogin) {
-            ZStack {
-                if appState.isAuthenticating {
-                    ProgressView().tint(.white)
-                } else {
-                    Text("登入").font(.headline)
-                }
-            }
-            .frame(maxWidth: appState.isAuthenticating ? 56 : .infinity)
-            .frame(height: 56)
-            .background(
-                canSubmit || appState.isAuthenticating ? Theme.accentFill : Color.gray.opacity(0.35),
-                in: Capsule()
-            )
-            .foregroundStyle(.white)
+    /// 登入之後拿得到什麼。刻意寫成一行說明文字 —— 做成一顆顆的標籤會讓人
+    /// 以為可以點。
+    private var perks: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Capsule()
+                .fill(Color.primary.opacity(0.12))
+                .frame(width: 2.5)
+            Text("登入後，課表、成績、作業、請假與在學證明都會在這裡。")
+                .font(.system(size: 13))
+                .lineSpacing(3)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
-        .disabled(!canSubmit)
-        .frame(maxWidth: .infinity)
-        .animation(.spring(duration: 0.45, bounce: 0.25), value: appState.isAuthenticating)
-        .animation(.easeInOut(duration: 0.2), value: canSubmit)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 2)
     }
 
-    // MARK: - Helpers
-
-    private func loginField<Content: View>(
-        title: String, systemImage: String, isFocused: Bool,
+    private func field<Content: View>(
+        label: String,
+        isFocused: Bool,
+        accessory: String? = nil,
+        accessoryAction: @escaping () -> Void = {},
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .tracking(1.6)
                 .foregroundStyle(isFocused ? Theme.accent : .secondary)
-            content()
-                .textFieldStyle(.plain)
-                .padding(14)
-                .background(Theme.background)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(isFocused ? Theme.accent : .clear, lineWidth: 1.5)
-                )
+
+            HStack(spacing: 10) {
+                content()
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 16))
+
+                if let accessory {
+                    Button(accessory, action: accessoryAction)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .buttonStyle(.plain)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isFocused ? Theme.accent : Color.primary.opacity(0.09),
+                            lineWidth: isFocused ? 1.6 : 1)
+            )
         }
-        .animation(.snappy(duration: 0.25), value: isFocused)
+        .animation(.snappy(duration: 0.22), value: isFocused)
+        .animation(.easeInOut(duration: 0.2), value: accessory)
     }
+
+    // MARK: - 底部
+
+    private var footer: some View {
+        VStack(spacing: 12) {
+            AuthPrimaryButton(
+                title: "登入",
+                busyTitle: "驗證中",
+                isBusy: appState.isAuthenticating,
+                isEnabled: canSubmit,
+                action: attemptLogin
+            )
+            .authReveal(appeared, 5)
+
+            Text("帳號密碼只會存在這支手機的 Keychain，只用來登入學校系統。")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .authReveal(appeared, 6)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 14)
+        .padding(.bottom, 20)
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 動作
 
     private var canSubmit: Bool {
         !username.isEmpty && !password.isEmpty && !appState.isAuthenticating
@@ -212,46 +230,13 @@ struct LoginView: View {
     private func attemptLogin() {
         guard canSubmit else { return }
         focused = nil
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        AuthHaptic.commit()
         Task { await appState.login(username: username, password: password) }
     }
 }
 
-// MARK: - Animated maroon mesh background
+// MARK: - 登入失敗時的搖頭
 
-/// Slowly drifting maroon mesh — the brand backdrop behind the login panel.
-private struct MaroonMeshBackground: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            MeshGradient(
-                width: 3, height: 3,
-                points: [
-                    [0, 0], [0.5, 0], [1, 0],
-                    [0, 0.5],
-                    [0.5 + 0.22 * Float(sin(t * 0.43)), 0.5 + 0.18 * Float(cos(t * 0.31))],
-                    [1, 0.5],
-                    [0, 1], [0.5, 1], [1, 1]
-                ],
-                colors: [
-                    Color(red: 0.33, green: 0.09, blue: 0.10),
-                    Color(red: 0.47, green: 0.13, blue: 0.13),
-                    Color(red: 0.30, green: 0.08, blue: 0.10),
-                    Color(red: 0.52, green: 0.16, blue: 0.14),
-                    Color(red: 0.62, green: 0.22, blue: 0.18),
-                    Color(red: 0.42, green: 0.12, blue: 0.12),
-                    Color(red: 0.28, green: 0.07, blue: 0.09),
-                    Color(red: 0.44, green: 0.14, blue: 0.12),
-                    Color(red: 0.35, green: 0.10, blue: 0.11)
-                ]
-            )
-        }
-    }
-}
-
-// MARK: - Shake
-
-/// Horizontal shake driven by an incrementing trigger — used on login failure.
 private struct ShakeEffect: GeometryEffect {
     var shakes: CGFloat
     var animatableData: CGFloat {
@@ -264,4 +249,9 @@ private struct ShakeEffect: GeometryEffect {
             CGAffineTransform(translationX: sin(shakes * .pi * 6) * 7, y: 0)
         )
     }
+}
+
+#Preview {
+    LoginView()
+        .environment(AppState())
 }

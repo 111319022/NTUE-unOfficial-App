@@ -9,14 +9,13 @@ struct ContentView: View {
         Group {
             switch appState.phase {
             case .launching:
-                SplashView()
+                InitializingView()
                     .transition(.opacity)
             case .loggedOut:
+                // 登入頁與初始化頁的插圖位置一樣，交叉淡入時看起來就像同一張圖
+                // 留在原地、只有下面的字換了。
                 LoginView()
-                    .transition(.asymmetric(
-                        insertion: .opacity,
-                        removal: .move(edge: .bottom).combined(with: .opacity)
-                    ))
+                    .transition(.opacity)
             case .loggedIn:
                 MainTabView()
                     .transition(.opacity)
@@ -30,19 +29,6 @@ struct ContentView: View {
             }
         }
         .task { if !hasSeenOnboarding { showOnboarding = true } }
-    }
-}
-
-struct SplashView: View {
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "graduationcap.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(Theme.accent)
-            ProgressView()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
     }
 }
 

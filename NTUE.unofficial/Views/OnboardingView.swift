@@ -1,389 +1,296 @@
 import SwiftUI
 
-/// First-launch (and re-triggerable) introduction. Explains what the app is,
-/// stresses that it is **unofficial**, that the authoritative data lives in the
-/// iNTUE 校務系統 and Moodle 教學平台, then points the user at the login screen.
+/// 第一次開啟（或從設定重看）的介紹。四頁：這是什麼 → 有什麼 → 資料哪來 →
+/// 去登入。排版和登入／初始化頁同一套：滿版插圖在上、左對齊的字在下、
+/// 底部固定的操作列。
 struct OnboardingView: View {
-    /// Called when the user finishes or skips. The caller decides what to do
-    /// (mark as seen + reveal login, or just dismiss).
+    /// 使用者看完或略過時呼叫。
     var onFinish: () -> Void
 
-    @State private var page = 0
-    @State private var appeared = false
-    private let lastPage = 3
+    @State private var step = 0
+    @State private var forward = true
+
+    private let lastStep = 3
+    private var total: Int { lastStep + 1 }
 
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
-            ambientBlobs
 
             VStack(spacing: 0) {
-                skipBar
-                TabView(selection: $page) {
-                    welcomePage.tag(0)
-                    featuresPage.tag(1)
-                    disclaimerPage.tag(2)
-                    loginPage.tag(3)
+                if step > 0 {
+                    header
+                        .transition(.opacity)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
 
-                dots
-                continueButton
-            }
-            .padding(.bottom, 24)
-        }
-        .onAppear { appeared = true }
-    }
+                ZStack {
+                    page
+                        .id(step)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
+                        ))
+                }
+                .frame(maxHeight: .infinity)
 
-    private func isActive(_ index: Int) -> Bool {
-        appeared && page == index
-    }
-
-    // MARK: - Ambient background
-
-    /// Two soft colour blobs that drift with the current page (parallax).
-    private var ambientBlobs: some View {
-        ZStack {
-            Circle()
-                .fill(Theme.accent.opacity(0.10))
-                .frame(width: 360, height: 360)
-                .blur(radius: 70)
-                .offset(x: 150 - CGFloat(page) * 60, y: -280)
-            Circle()
-                .fill(Theme.amber.opacity(0.10))
-                .frame(width: 300, height: 300)
-                .blur(radius: 70)
-                .offset(x: -160 + CGFloat(page) * 40, y: 300)
-        }
-        .animation(.spring(duration: 1.0), value: page)
-        .ignoresSafeArea()
-    }
-
-    // MARK: - Top bar
-
-    private var skipBar: some View {
-        HStack {
-            Spacer()
-            if page < lastPage {
-                Button("略過") { onFinish() }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
+                footer
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .animation(.spring(duration: 0.45), value: step)
+    }
+
+    // MARK: - 頂端：進度 + 略過
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(Theme.accent)
+                        .frame(width: max(8, geo.size.width * CGFloat(step + 1) / CGFloat(total)))
+                }
+            }
+            .frame(height: 3)
+
+            Text(String(format: "%02d/%02d", step + 1, total))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .tracking(0.5)
+                .foregroundStyle(.secondary)
+
+            if step < lastStep {
+                Button("略過") {
+                    AuthHaptic.tap()
+                    onFinish()
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
         .frame(height: 44)
-        .animation(.easeInOut(duration: 0.2), value: page)
     }
 
-    // MARK: - Page 1 · Welcome
+    // MARK: - 四頁
+
+    @ViewBuilder
+    private var page: some View {
+        switch step {
+        case 0: welcomePage
+        case 1: featuresPage
+        case 2: sourcePage
+        default: startPage
+        }
+    }
 
     private var welcomePage: some View {
-        let active = isActive(0)
-        return VStack(spacing: 24) {
-            Spacer()
-            mockCardStack(active: active)
-            VStack(spacing: 12) {
-                (Text("NTUE").foregroundStyle(.primary)
-                 + Text(".unofficial").foregroundStyle(Theme.accent))
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .reveal(active, index: 3)
-                Text("把國立臺北教育大學的課表、成績、\n作業與校園服務，整合到一個 App。")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .reveal(active, index: 4)
-                Text("非官方 App")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Theme.accentSoft, in: Capsule())
-                    .reveal(active, index: 5)
-            }
-            Spacer()
-            Spacer()
+        StepPage { appeared in
+            DeskHero(appeared: appeared)
+        } content: { appeared in
+            (Text("NTUE").foregroundStyle(Theme.accent)
+             + Text(".unofficial").foregroundStyle(Theme.accent.opacity(0.5)))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .tracking(0.2)
+                .authReveal(appeared, 0)
+
+            AuthTitle(text: "把學校的事，\n收在同一個地方")
+                .authReveal(appeared, 1)
+
+            AuthBody(text: "課表、成績、作業、請假、在學證明 —— 原本要在校務系統和 Moodle 之間切來切去的東西，這裡一次看完。")
+                .authReveal(appeared, 2)
+
+            Text("學生自己做的，非官方 App")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .tracking(1.2)
+                .foregroundStyle(.tertiary)
+                .authReveal(appeared, 3)
         }
-        .padding(.horizontal, 24)
     }
-
-    /// A tilted stack of miniature "real UI" cards — the product as the hero.
-    private func mockCardStack(active: Bool) -> some View {
-        ZStack {
-            mockCard(rotation: 3, floatDuration: 3.1) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("作業 · 明天截止")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Theme.amber)
-                    Text("教育心理學 反思報告")
-                        .font(.footnote)
-                        .foregroundStyle(.primary)
-                }
-            }
-            .frame(width: 190)
-            .offset(x: 64, y: 10)
-            .reveal(active, index: 1)
-
-            mockCard(rotation: -3, floatDuration: 2.6) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("下一堂課 · 10:10")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("國音及說話")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
-                    Text("篤行樓 401")
-                        .font(.caption)
-                        .foregroundStyle(Theme.accent)
-                }
-            }
-            .frame(width: 200)
-            .offset(x: -48, y: -62)
-            .reveal(active, index: 0)
-
-            mockCard(rotation: 2, floatDuration: 3.5, background: Theme.accentFill) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("本學期")
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.75))
-                    Text("第 7 週 · 還有 87 天")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.white)
-                }
-            }
-            .frame(width: 195)
-            .offset(x: -30, y: 72)
-            .reveal(active, index: 2)
-        }
-        .frame(height: 220)
-    }
-
-    private func mockCard<Content: View>(
-        rotation: Double, floatDuration: Double,
-        background: Color = Theme.cardBackground,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Theme.accent.opacity(0.10), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.08), radius: 14, y: 8)
-            .rotationEffect(.degrees(rotation))
-            .floating(duration: floatDuration)
-    }
-
-    // MARK: - Page 2 · Features
 
     private var featuresPage: some View {
-        let active = isActive(1)
-        return VStack(spacing: 26) {
-            Spacer()
-            Text("一個 App，全部搞定")
-                .font(.title.bold())
-                .reveal(active, index: 0)
-            VStack(alignment: .leading, spacing: 16) {
-                featureRow("house.fill", "首頁", "下一堂課、今日課表、作業截止、學期倒數")
-                    .reveal(active, index: 1)
-                featureRow("calendar", "課表", "個人週課表，一眼看完整學期")
-                    .reveal(active, index: 2)
-                featureRow("checklist", "作業", "Moodle 各課作業與繳交狀態")
-                    .reveal(active, index: 3)
-                featureRow("square.grid.2x2.fill", "其他服務", "成績、缺曠、操行獎懲、請假、在學證明…")
-                    .reveal(active, index: 4)
-            }
-            .padding(.horizontal, 8)
-            Spacer()
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-    }
+        StepPage { appeared in
+            TimetableHero(appeared: appeared)
+        } content: { appeared in
+            AuthEyebrow(text: "What's inside")
+                .authReveal(appeared, 0)
 
-    // MARK: - Page 3 · Disclaimer
+            AuthTitle(text: "四個分頁，就這樣", size: 25)
+                .authReveal(appeared, 1)
 
-    private var disclaimerPage: some View {
-        let active = isActive(2)
-        return VStack(spacing: 24) {
-            Spacer()
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 46))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 96, height: 96)
-                .background(Theme.accentSoft, in: Circle())
-                .symbolEffect(.bounce, value: active)
-                .reveal(active, index: 0)
-            Text("資料以官方系統為準")
-                .font(.title.bold())
-                .reveal(active, index: 1)
             VStack(alignment: .leading, spacing: 14) {
-                bullet("本 App 並非學校官方出品。")
-                bullet("所有成績、課表、作業等資料，皆即時取自 iNTUE 校務系統 與 Moodle 教學平台。")
-                bullet("如顯示內容與官方系統不一致，一律以官方系統為準。")
+                numberedRow("01", "首頁", "下一堂課、今天的課表、快到期的作業、學期倒數")
+                    .authReveal(appeared, 2)
+                numberedRow("02", "課表", "個人週課表，一眼看完整個學期")
+                    .authReveal(appeared, 3)
+                numberedRow("03", "作業", "Moodle 各科作業與繳交狀態")
+                    .authReveal(appeared, 4)
+                numberedRow("04", "其他服務", "成績、缺曠、操行獎懲、請假、在學證明")
+                    .authReveal(appeared, 5)
             }
-            .padding(18)
-            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.accent.opacity(0.15), lineWidth: 1))
-            .reveal(active, index: 2)
-            Spacer()
-            Spacer()
+            .padding(.top, 2)
         }
-        .padding(.horizontal, 24)
     }
 
-    // MARK: - Page 4 · Login prompt
+    private var sourcePage: some View {
+        StepPage { appeared in
+            DataFlowHero(appeared: appeared)
+        } content: { appeared in
+            AuthEyebrow(text: "Data source")
+                .authReveal(appeared, 0)
 
-    private var loginPage: some View {
-        let active = isActive(3)
-        return VStack(spacing: 22) {
-            Spacer()
-            Image(systemName: "person.badge.key.fill")
-                .font(.system(size: 46))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 96, height: 96)
-                .background(Theme.accentSoft, in: Circle())
-                .symbolEffect(.bounce, value: active)
-                .reveal(active, index: 0)
-            Text("開始使用")
-                .font(.title.bold())
-                .reveal(active, index: 1)
-            Text("接下來請用你的「校園入口網」帳號密碼登入，\n就能開始使用所有功能。")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .reveal(active, index: 2)
-            Label("帳號密碼只用於登入官方系統，僅保存在這支裝置上。", systemImage: "lock.fill")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.leading)
-                .padding(.horizontal, 24)
-                .reveal(active, index: 3)
-            Spacer()
-            Spacer()
+            AuthTitle(text: "資料直接跟學校要", size: 25)
+                .authReveal(appeared, 1)
+
+            VStack(alignment: .leading, spacing: 13) {
+                ruledLine("畫面上的成績、課表、作業，都是當下向 iNTUE 校務系統與 Moodle 取得的。")
+                    .authReveal(appeared, 2)
+                ruledLine("這個 App 不是學校官方出品，中間也沒有其他伺服器。")
+                    .authReveal(appeared, 3)
+                ruledLine("如果顯示的內容和官方系統不一樣，一律以官方系統為準。")
+                    .authReveal(appeared, 4)
+            }
+            .padding(.top, 2)
         }
-        .padding(.horizontal, 24)
     }
 
-    // MARK: - Building blocks
+    private var startPage: some View {
+        StepPage { appeared in
+            // 和登入頁同一張校園小景、同樣的燈數 —— 這一頁關掉之後
+            // 插圖就留在原地，接著就是登入畫面。
+            CampusScene(litWindows: 3, appeared: appeared)
+        } content: { appeared in
+            AuthEyebrow(text: "Ready")
+                .authReveal(appeared, 0)
 
-    private func featureRow(_ icon: String, _ title: String, _ desc: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.headline)
+            AuthTitle(text: "準備好了，來登入吧")
+                .authReveal(appeared, 1)
+
+            AuthBody(text: "接下來用你在 iNTUE 校務系統（校園入口網）的帳號密碼登入，就可以開始用了。")
+                .authReveal(appeared, 2)
+
+            Text("帳號密碼只會存在這支手機的 Keychain，只用來登入學校系統。")
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .authReveal(appeared, 3)
+        }
+    }
+
+    // MARK: - 內文元件
+
+    private func numberedRow(_ index: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(index)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.accent)
-                .frame(width: 38, height: 38)
-                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
-                Text(desc).font(.caption).foregroundStyle(.secondary)
+                .padding(.top, 3)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
     }
 
-    private func bullet(_ text: String) -> some View {
+    private func ruledLine(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.footnote)
-                .foregroundStyle(Theme.accent)
-                .padding(.top, 2)
+            Capsule()
+                .fill(Theme.accent.opacity(0.35))
+                .frame(width: 2.5)
             Text(text)
-                .font(.subheadline)
+                .font(.system(size: 13))
+                .lineSpacing(3)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var dots: some View {
-        HStack(spacing: 8) {
-            ForEach(0...lastPage, id: \.self) { i in
-                Capsule()
-                    .fill(i == page ? Theme.accent : Color.secondary.opacity(0.3))
-                    .frame(width: i == page ? 22 : 7, height: 7)
-            }
-        }
-        .animation(.spring(duration: 0.4, bounce: 0.3), value: page)
-        .padding(.bottom, 20)
-    }
+    // MARK: - 底部操作列
 
-    private var continueButton: some View {
-        Button {
-            if page < lastPage {
-                withAnimation(.spring(duration: 0.5)) { page += 1 }
-            } else {
-                onFinish()
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text(page == lastPage ? "開始使用" : "下一步")
-                    .font(.headline)
-                    .contentTransition(.opacity)
-                Image(systemName: page == lastPage ? "arrow.right.circle.fill" : "arrow.right")
-                    .font(.headline)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(Theme.accentFill, in: Capsule())
-        }
-        .buttonStyle(PressableButtonStyle())
-        .padding(.horizontal, 24)
-    }
-}
-
-// MARK: - Animation helpers
-
-/// Staggered entrance: fades + slides an element in when its page becomes
-/// active; `index` sets the stagger order.
-private struct RevealModifier: ViewModifier {
-    let isActive: Bool
-    let index: Int
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isActive ? 1 : 0)
-            .offset(y: isActive ? 0 : 28)
-            .animation(
-                isActive
-                    ? .spring(duration: 0.55, bounce: 0.25).delay(0.12 + 0.08 * Double(index))
-                    : .easeIn(duration: 0.15),
-                value: isActive
-            )
-    }
-}
-
-/// Gentle perpetual vertical drift, so the card stack feels alive.
-private struct FloatingModifier: ViewModifier {
-    var duration: Double
-    @State private var up = false
-
-    func body(content: Content) -> some View {
-        content
-            .offset(y: up ? -4 : 4)
-            .onAppear {
-                withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
-                    up = true
+    private var footer: some View {
+        HStack(spacing: 12) {
+            if step > 0 {
+                Button(action: goBack) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 54, height: 54)
+                        .background(Theme.accentFill, in: Circle())
                 }
+                .buttonStyle(PressScaleStyle())
+                .transition(.scale.combined(with: .opacity))
             }
+
+            AuthPrimaryButton(title: step == lastStep ? "開始使用" : "下一步", action: goNext)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 20)
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func goNext() {
+        if step < lastStep {
+            AuthHaptic.tap()
+            forward = true
+            step += 1
+        } else {
+            AuthHaptic.commit()
+            onFinish()
+        }
+    }
+
+    private func goBack() {
+        AuthHaptic.step()
+        forward = false
+        step = max(0, step - 1)
     }
 }
 
-private struct PressableButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.spring(duration: 0.25), value: configuration.isPressed)
+// MARK: - 單頁的骨架
+
+/// 插圖在上、文字在下，兩者都在這一頁出現時才開始動。
+private struct StepPage<Hero: View, Content: View>: View {
+    @ViewBuilder var hero: (Bool) -> Hero
+    @ViewBuilder var content: (Bool) -> Content
+
+    @State private var appeared = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            hero(appeared)
+                .frame(height: 250)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    content(appeared)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.top, 22)
+                .padding(.bottom, 10)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity)
+        .onAppear { appeared = true }
     }
 }
 
-private extension View {
-    func reveal(_ isActive: Bool, index: Int) -> some View {
-        modifier(RevealModifier(isActive: isActive, index: index))
-    }
-
-    func floating(duration: Double) -> some View {
-        modifier(FloatingModifier(duration: duration))
-    }
+#Preview {
+    OnboardingView {}
 }

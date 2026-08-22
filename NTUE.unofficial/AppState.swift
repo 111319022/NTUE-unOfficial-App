@@ -9,7 +9,28 @@ final class AppState {
         case loggedIn
     }
 
+    /// 初始化畫面上的四個步驟。順序就是實際發生的順序，畫面照著顯示，
+    /// 不是隨便跑個進度條。
+    enum BootStep: Int, Comparable, CaseIterable {
+        case connecting   // 連線到校務系統
+        case verifying    // 確認登入狀態
+        case profile      // 讀取學籍資料
+        case preparing    // 準備課表與作業
+
+        var label: String {
+            switch self {
+            case .connecting: "連線到校務系統"
+            case .verifying:  "確認登入狀態"
+            case .profile:    "讀取學籍資料"
+            case .preparing:  "準備課表與作業"
+            }
+        }
+
+        static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+    }
+
     var phase: Phase = .launching
+    var bootStep: BootStep = .connecting
     var isAuthenticating = false
     var loginError: String?
     var username = ""
@@ -23,17 +44,26 @@ final class AppState {
     func login(username: String, password: String) async {
         isAuthenticating = true
         loginError = nil
+        bootStep = .verifying
         do {
             try await auth.login(username: username, password: password)
             KeychainHelper.save(key: "ntue_username", value: username)
             KeychainHelper.save(key: "ntue_password", value: password)
             self.username = username
+            // 帳密確認過了 → 交棒給初始化畫面，剩下的等待才有東西可看。
+            isAuthenticating = false
+            bootStep = .profile
+            phase = .launching
             await refreshStudentInfo()
+            // 課表與作業的預抓在背景繼續；這裡停一拍，讓最後一步的動畫走完
+            // 再切進主畫面，不然畫面會閃一下。
+            bootStep = .preparing
+            try? await Task.sleep(for: .milliseconds(420))
             phase = .loggedIn
         } catch {
             loginError = error.localizedDescription
+            isAuthenticating = false
         }
-        isAuthenticating = false
     }
 
     func logout() {
@@ -48,6 +78,7 @@ final class AppState {
     /// cached profile and validate/refresh in the background (stale-while-revalidate).
     /// Only the genuine cold start (no saved credentials) blocks on the network.
     func restoreSession() async {
+        bootStep = .connecting
         let savedUser = KeychainHelper.load(key: "ntue_username")
         let hasPassword = KeychainHelper.load(key: "ntue_password") != nil
         let cachedInfo = Persistence.load(StudentInfo.self, for: .studentInfo)
@@ -63,9 +94,13 @@ final class AppState {
         }
 
         // Cold start — no usable cache. Validate / log in before showing the UI.
+        bootStep = .verifying
         if await auth.isAuthenticated() {
             username = savedUser ?? ""
+            bootStep = .profile
             await refreshStudentInfo()
+            bootStep = .preparing
+            try? await Task.sleep(for: .milliseconds(350))
             phase = .loggedIn
             return
         }
