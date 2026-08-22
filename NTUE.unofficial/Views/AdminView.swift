@@ -196,6 +196,10 @@ private struct TermsAdminList: View {
                         Text(t.name).font(.subheadline.bold())
                         Text("\(dateText(t.start)) 開學 · 16週 \(dateText(t.end16)) · 18週 \(dateText(t.end18))")
                             .font(.caption).foregroundStyle(.secondary)
+                        if let s = t.selectionStart {
+                            Text("選課開始 \(dateText(s))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -242,6 +246,8 @@ private struct TermEditor: View {
     @State private var start: Date
     @State private var end16: Date
     @State private var end18: Date
+    @State private var hasSelectionStart: Bool
+    @State private var selectionStart: Date
     @State private var saving = false
     @State private var error: String?
 
@@ -252,6 +258,8 @@ private struct TermEditor: View {
         _start = State(initialValue: existing?.start ?? Date())
         _end16 = State(initialValue: existing?.end16 ?? Date())
         _end18 = State(initialValue: existing?.end18 ?? Date())
+        _hasSelectionStart = State(initialValue: existing?.selectionStart != nil)
+        _selectionStart = State(initialValue: existing?.selectionStart ?? Date())
     }
 
     var body: some View {
@@ -265,6 +273,16 @@ private struct TermEditor: View {
                 DatePicker("開學", selection: $start, displayedComponents: .date)
                 DatePicker("課程結束（16 週）", selection: $end16, displayedComponents: .date)
                 DatePicker("學期結束（18 週）", selection: $end18, displayedComponents: .date)
+            }
+            Section {
+                Toggle("設定選課開始日", isOn: $hasSelectionStart)
+                if hasSelectionStart {
+                    DatePicker("選課開始", selection: $selectionStart, displayedComponents: .date)
+                }
+            } header: {
+                Text("選課")
+            } footer: {
+                Text("選課頁在這天之後才把預設學期切到本學期，之前都停在上一學期。留空的話，會在上一學期的「學期結束（18 週）」前 \(NTUETerm.selectionLeadDays) 天自動切。")
             }
             if let error {
                 Section { Text(error).foregroundStyle(.red).font(.caption) }
@@ -285,7 +303,8 @@ private struct TermEditor: View {
 
     private func save() {
         saving = true; error = nil
-        let term = AcademicTerm(code: code, name: name, start: start, end16: end16, end18: end18)
+        let term = AcademicTerm(code: code, name: name, start: start, end16: end16, end18: end18,
+                                selectionStart: hasSelectionStart ? selectionStart : nil)
         Task {
             do {
                 try await CloudKitAdmin.save(term: term)

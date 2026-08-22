@@ -43,14 +43,31 @@ struct PreScheduleView: View {
     @State private var selectedID = ""
     @State private var loaded = false
 
-    /// Past + current + the upcoming (選課) term, oldest → newest.
+    /// Past + current + the upcoming (選課) term, oldest → newest. The upcoming
+    /// term stays in the list all year so you can look ahead on purpose — it just
+    /// isn't the default until 選課 actually opens (see `defaultSemester`).
     private var semesterList: [SemesterSelection] {
         let base = appState.studentInfo.gradeLevel.map { NTUETerm.enrolledSemesters(grade: $0) } ?? vm.semesters
         return NTUETerm.upToUpcoming(base)
     }
 
+    /// The semester being shown. Falls back to `selectedID` itself so the choice
+    /// still sticks before the semester list is known (年級 not loaded yet) —
+    /// otherwise the page would silently load the server's default term.
     private var currentSelection: SemesterSelection? {
-        semesterList.first { $0.id == selectedID } ?? vm.selected
+        semesterList.first { $0.id == selectedID }
+            ?? SemesterSelection(id: selectedID)
+            ?? vm.selected
+    }
+
+    /// 開啟時預設停在的學期:平常是本學期(開學後還有三階/加退選要看),接近
+    /// 期末選課開跑才切到下一學期。
+    private var defaultSemester: SemesterSelection { NTUETerm.selectionSemester() }
+
+    /// 目前看的是還沒開始的學期嗎(往前看下一學期時,空資料代表選課還沒開始)。
+    private var isFutureTerm: Bool {
+        guard let sel = currentSelection else { return false }
+        return sel > NTUETerm.currentSemester()
     }
 
     var body: some View {
@@ -76,7 +93,7 @@ struct PreScheduleView: View {
         .task {
             guard !loaded else { return }
             loaded = true
-            selectedID = NTUETerm.upcomingSemester().id
+            selectedID = defaultSemester.id
             await reload()
         }
     }
@@ -218,11 +235,26 @@ struct PreScheduleView: View {
         }
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("此階段尚無資料", systemImage: "calendar.badge.clock")
-        } description: {
-            Text("「最終結果」要等所有階段跑完才有資料;選課期間請查看各階段頁籤。")
+        if isFutureTerm {
+            // 往前看了還沒開始選的學期 — 給一鍵回到本學期,而不是留一片空白。
+            ContentUnavailableView {
+                Label("\(currentSelection?.shortLabel ?? "下學期")選課尚未開始", systemImage: "calendar.badge.clock")
+            } description: {
+                Text("選課通常在學期末才開跑,開始後這裡就會有資料。")
+            } actions: {
+                Button("看 \(NTUETerm.currentSemester().shortLabel)") {
+                    selectedID = NTUETerm.currentSemester().id
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        } else {
+            ContentUnavailableView {
+                Label("此階段尚無資料", systemImage: "calendar.badge.clock")
+            } description: {
+                Text("「最終結果」要等所有階段跑完才有資料;選課期間請查看各階段頁籤。")
+            }
         }
     }
 

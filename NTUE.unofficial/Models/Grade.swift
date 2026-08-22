@@ -84,12 +84,16 @@ enum NTUETerm {
         return sel < currentSemester(asOf: date)
     }
 
-    /// The 4-year span of semesters a student of `grade` should see, e.g. a
-    /// 二年級 student in 學年 114 → 113 上 … 116 下 (oldest → newest).
+    /// The span of semesters a student of `grade` should see, e.g. a 二年級
+    /// student in 學年 114 → 113 上 … 116 下 (oldest → newest).
+    ///
+    /// 至少四學年,但延畢/五年制(grade > 4)會一路長到「現在」這個學年 —— 否則
+    /// 大五生的清單會停在入學後第四年,連本學期都選不到。
     static func enrolledSemesters(grade: Int, asOf date: Date = Date()) -> [SemesterSelection] {
         let enrollAY = currentAcademicYear(date) - (grade - 1)
+        let lastAY = Swift.max(enrollAY + 3, currentAcademicYear(date))
         var out: [SemesterSelection] = []
-        for ay in enrollAY...(enrollAY + 3) {
+        for ay in enrollAY...lastAY {
             out.append(SemesterSelection(year: "\(ay)", semester: "1"))
             out.append(SemesterSelection(year: "\(ay)", semester: "2"))
         }
@@ -151,10 +155,11 @@ enum NTUETerm {
     /// 選課是「學期末才選下一學期」,而且開學後還有三階/加退選,所以一個學期裡
     /// 大部分時間該看的其實是「現在這個學期」;只有接近期末、選課真的開跑了,
     /// 預設才切到下一學期。判斷順序:
-    ///  1. 行事曆上某學期填了「選課開始日」→ 取已到期的最新一個(最精確,而且
-    ///     在 CloudKit 改日期就好,不必發新版)。
-    ///  2. 知道本學期的課程結束日 → 期末前 `selectionLeadDays` 天開始切。
-    ///  3. 兩者都沒有 → 用月份推算(12–1 月切下學期、5–7 月切下學年上學期)。
+    ///  1. 行事曆上下一學期填了「選課開始日」→ 完全以它為準(最精確,而且在
+    ///     CloudKit 改日期就好,不必發新版)。
+    ///  2. 沒填 → 底線:本學期「學期結束(18 週)」前 `selectionLeadDays` 天才切。
+    ///  3. 行事曆連本學期都沒有 → 用粗估的學期結束日(上學期 1/10、下學期 6/20)
+    ///     套同一條規則。
     ///
     /// 不論哪一條,都不會早於目前學期(開學後仍在選課期,看的就是本學期)。
     static func selectionSemester(asOf date: Date = Date(),
@@ -162,32 +167,40 @@ enum NTUETerm {
         let cur = currentSemester(asOf: date)
         let upcoming = upcomingSemester(asOf: date)
 
-        // 1) 行事曆明確標了選課開始日。
-        let opened = terms
-            .compactMap { t -> SemesterSelection? in
-                guard let start = t.selectionStart, start <= date else { return nil }
-                return SemesterSelection(termCode: t.code)
-            }
-            .max()
-        if let opened { return Swift.max(opened, cur) }
-
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
 
-        // 2) 用本學期的課程結束日往前推。
-        if let term = terms.first(where: { $0.code == cur.termCode }),
-           let switchDate = cal.date(byAdding: .day, value: -selectionLeadDays, to: term.end16) {
-            return date >= cal.startOfDay(for: switchDate) ? upcoming : cur
+        // 1) 下一學期的行事曆填了選課開始日 → 以它為準(填了就不再推算)。
+        if let next = terms.first(where: { $0.code == upcoming.termCode }),
+           let selectionStart = next.selectionStart {
+            return date >= cal.startOfDay(for: selectionStart) ? upcoming : cur
         }
 
-        // 3) 行事曆沒涵蓋 → 月份推算。
-        let month = cal.component(.month, from: date)
-        if cur.semester == "1" { return (month == 12 || month == 1) ? upcoming : cur }
-        return (5...7).contains(month) ? upcoming : cur
+        // 2) 底線:本學期結束前 selectionLeadDays 天才切。
+        if let term = terms.first(where: { $0.code == cur.termCode }) {
+            return switched(date, semesterEnd: term.end18, cal: cal) ? upcoming : cur
+        }
+
+        // 3) 行事曆沒涵蓋這學期 → 用粗估的學期結束日套同一條規則。
+        //    上學期在隔年 1 月、下學期在同一西元年 6 月結束(民國 Y → 西元 Y+1912)。
+        var comps = DateComponents()
+        comps.year = (Int(cur.year) ?? currentAcademicYear(date)) + 1912
+        comps.month = cur.semester == "1" ? 1 : 6
+        comps.day = cur.semester == "1" ? 10 : 20
+        guard let estimatedEnd = cal.date(from: comps) else { return cur }
+        return switched(date, semesterEnd: estimatedEnd, cal: cal) ? upcoming : cur
     }
 
-    /// 選課大約在課程結束前幾天開跑(第一階段志願登錄),用來推算預設學期。
-    static let selectionLeadDays = 21
+    /// 學期結束前 `selectionLeadDays` 天(含)之後 → 該切到下一學期了。
+    private static func switched(_ date: Date, semesterEnd: Date, cal: Calendar) -> Bool {
+        guard let switchDate = cal.date(byAdding: .day, value: -selectionLeadDays, to: semesterEnd) else {
+            return date >= cal.startOfDay(for: semesterEnd)
+        }
+        return date >= cal.startOfDay(for: switchDate)
+    }
+
+    /// 選課頁提前幾天切到下一學期(從該學期的「學期結束」往前算)。
+    static let selectionLeadDays = 14
 }
 
 /// A selectable academic year + semester (scraped from the page's <select> options).
@@ -206,12 +219,12 @@ struct SemesterSelection: Identifiable, Hashable, Codable {
         self.semester = semester
     }
 
-    /// 由學期代碼還原,例 "1152" → 115 下;格式不符時回 nil。
-    init?(termCode: String) {
-        let digits = termCode.filter(\.isNumber)
-        guard digits.count >= 2 else { return nil }
-        self.year = String(digits.dropLast())
-        self.semester = String(digits.suffix(1))
+    /// 由 `id` 還原,例 "115-2" → 115 下;格式不符時回 nil。
+    init?(id: String) {
+        let parts = id.split(separator: "-")
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+        self.year = String(parts[0])
+        self.semester = String(parts[1])
     }
 
     var semesterLabel: String {

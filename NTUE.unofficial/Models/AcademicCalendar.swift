@@ -9,6 +9,10 @@ struct AcademicTerm: Codable, Hashable {
     let start: Date
     let end16: Date
     let end18: Date
+    /// 這學期的選課從哪天開跑(第一階段志願登錄)。選課頁在這天之前都停在
+    /// 上一個學期,不會早早就跳到還沒開始選的學期。可空 — 沒填就用
+    /// `NTUETerm.selectionSemester` 的推算(期末前三週)。
+    var selectionStart: Date?
 }
 
 extension AcademicTerm {
@@ -20,13 +24,15 @@ extension AcademicTerm {
     ///   start  Date/Time — 開學日
     ///   end16  Date/Time — 課程結束（16 週）
     ///   end18  Date/Time — 學期結束（18 週）
+    ///   selectionStart Date/Time — 選課開始日（可空；選課頁在這天才切到本學期）
     init?(record: CKRecord) {
         guard let code = record["code"] as? String,
               let name = record["name"] as? String,
               let start = record["start"] as? Date,
               let end16 = record["end16"] as? Date,
               let end18 = record["end18"] as? Date else { return nil }
-        self.init(code: code, name: name, start: start, end16: end16, end18: end18)
+        self.init(code: code, name: name, start: start, end16: end16, end18: end18,
+                  selectionStart: record["selectionStart"] as? Date)
     }
 
     func apply(to record: CKRecord) {
@@ -35,6 +41,7 @@ extension AcademicTerm {
         record["start"] = start
         record["end16"] = end16
         record["end18"] = end18
+        record["selectionStart"] = selectionStart as CKRecordValue?
     }
 }
 
@@ -120,8 +127,10 @@ enum AcademicCalendar {
         return known.contains { day >= cal.startOfDay(for: $0.start) && day <= cal.startOfDay(for: end(of: $0)) }
     }
 
-    private static func term(_ code: String, _ name: String, start: String, end16: String, end18: String) -> AcademicTerm {
-        AcademicTerm(code: code, name: name, start: date(start), end16: date(end16), end18: date(end18))
+    private static func term(_ code: String, _ name: String, start: String, end16: String, end18: String,
+                             selectionStart: String? = nil) -> AcademicTerm {
+        AcademicTerm(code: code, name: name, start: date(start), end16: date(end16), end18: date(end18),
+                     selectionStart: selectionStart.map(date))
     }
 
     private static func date(_ s: String) -> Date {
