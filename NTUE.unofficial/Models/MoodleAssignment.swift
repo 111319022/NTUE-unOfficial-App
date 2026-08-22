@@ -99,4 +99,23 @@ nonisolated struct MoodleDeadline: Identifiable, Hashable, Codable {
     let due: Date
     let overdue: Bool
     let url: URL
+    /// 這門課屬於哪個學期(課程全名前綴,例 "1142")。舊版留下來的快取沒有
+    /// 這個欄位 → nil,那時只能靠截止日判斷是不是上學期的。
+    var semesterCode: String?
+
+    /// 上一個(或更早)學期留下來的作業。沒交的舊作業會一直掛在 Moodle 的
+    /// 行事曆上,首頁/小工具/提醒不該再把它們算成「待繳」—— 開學後那只是一排
+    /// 永遠消不掉的紅色「已逾期」。
+    /// - Parameters:
+    ///   - currentTermCode: 本學期代碼,例 "1151"。
+    ///   - termStart: 本學期開學日;行事曆沒涵蓋現在時傳 nil,那就只認學期代碼。
+    ///
+    /// 兩邊都問不出來就當作本學期 —— 寧可多顯示一筆,也不要把真的作業藏起來。
+    func belongsToPastSemester(currentTermCode: String, termStart: Date?) -> Bool {
+        if let semesterCode, semesterCode.count == 4, currentTermCode.count == 4 {
+            return semesterCode < currentTermCode    // 都是四位數字,字串比較即可
+        }
+        guard let termStart else { return false }
+        return due < termStart
+    }
 }

@@ -112,6 +112,17 @@ enum AcademicCalendar {
         return .unknown
     }
 
+    /// 「本學期」從哪一天開始:學期中就是這學期的開學日,放假中則是下一個學期
+    /// 的開學日(暑假裡「本學期」還沒有任何作業,所以起算日落在未來是對的)。
+    /// 行事曆沒涵蓋現在時回 `nil`,呼叫端就別用日期去過濾。
+    static func currentTermStart(now: Date = Date()) -> Date? {
+        switch countdown(now: now) {
+        case .during(let term, _): return term.start
+        case .beforeStart(let term, _): return term.start
+        case .unknown: return nil
+        }
+    }
+
     /// Whether classes are in session on `date` (between 開學 and 學期結束, per
     /// the 16/18-week preference). Returns `nil` when the date falls outside the
     /// calendar we actually know about, so callers can choose *not* to hide

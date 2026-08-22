@@ -50,7 +50,7 @@ final class DataStore {
     private init() {
         cachedTimetable = Persistence.load(Timetable.self, for: .timetable)
         cachedTimetableSemester = Persistence.load(String.self, for: .timetableSemester)
-        cachedDeadlines = Persistence.load([MoodleDeadline].self, for: .moodleDeadlines)
+        cachedDeadlines = Persistence.load([MoodleDeadline].self, for: .moodleDeadlines).map(Self.currentSemesterOnly)
         cachedGrades = Persistence.load(NTUEService.GradesPage.self, for: .grades)
         cachedAssignments = Persistence.load(MoodleService.AssignmentsPage.self, for: .moodleAssignments)
         cachedAnnouncements = Persistence.load(MoodleService.AnnouncementsPage.self, for: .moodleAnnouncements)
@@ -117,25 +117,40 @@ final class DataStore {
 
     func moodleDeadlines(forceReload: Bool = false) async throws -> [MoodleDeadline] {
         if forceReload { deadlinesTask = nil }
-        let task = deadlinesTask ?? Task { try await MoodleService.shared.loadUpcomingDeadlines(limit: 12) }
+        let termStart = AcademicCalendar.currentTermStart()
+        let task = deadlinesTask ?? Task {
+            try await MoodleService.shared.loadUpcomingDeadlines(limit: 12, notBefore: termStart)
+        }
         deadlinesTask = task
         do {
             let result = try await task.value
             if result.isEmpty {
                 // Empty can mean "no homework" or a dropped session — don't persist; allow retry.
                 deadlinesTask = nil
-            } else {
-                cachedDeadlines = result
-                Persistence.save(result, for: .moodleDeadlines)
-                WidgetBridge.update(timetable: currentSemesterTimetable, deadlines: result)
-                // Re-arm local deadline reminders from the freshest list (no-op if off).
-                Task { await NotificationManager.shared.rescheduleDeadlines(result) }
+                return result
             }
-            return result
+            // 抓回來的是真資料(session 還在),但裡面可能還混著上學期沒交的作業
+            // —— 過濾之後就算變成空的,那也是「本學期沒有待繳」的正確答案,照樣
+            // 存起來,免得每次進首頁都為了同一批舊作業重抓一次。
+            let current = Self.currentSemesterOnly(result)
+            cachedDeadlines = current
+            Persistence.save(current, for: .moodleDeadlines)
+            WidgetBridge.update(timetable: currentSemesterTimetable, deadlines: current)
+            // Re-arm local deadline reminders from the freshest list (no-op if off).
+            Task { await NotificationManager.shared.rescheduleDeadlines(current) }
+            return current
         } catch {
             deadlinesTask = nil
             throw error
         }
+    }
+
+    /// 只留本學期的作業。上學期沒交的作業會一直掛在 Moodle 的行事曆上,首頁、
+    /// 小工具和提醒都不該再把它們算成「待繳」—— 那只是一排永遠消不掉的已逾期。
+    private static func currentSemesterOnly(_ list: [MoodleDeadline]) -> [MoodleDeadline] {
+        let currentTermCode = NTUETerm.currentSemester().termCode
+        let termStart = AcademicCalendar.currentTermStart()
+        return list.filter { !$0.belongsToPastSemester(currentTermCode: currentTermCode, termStart: termStart) }
     }
 
     func moodleAssignments(forceReload: Bool = false) async throws -> MoodleService.AssignmentsPage {

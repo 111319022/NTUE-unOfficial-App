@@ -136,8 +136,13 @@ actor MoodleService {
 
     /// Outstanding assignment deadlines (submitted ones are auto-excluded by Moodle).
     /// Includes recently-overdue-but-unsubmitted by looking a little into the past.
-    func loadUpcomingDeadlines(limit: Int = 20) async throws -> [MoodleDeadline] {
-        let from = Int(Date().timeIntervalSince1970) - 30 * 86_400
+    ///
+    /// `notBefore`(本學期開學日)會把查詢的起點往後推 —— 上學期沒交的作業會
+    /// 一直留在行事曆上,不擋掉的話它們排在最前面,把 `limit` 的名額吃光,真正
+    /// 該顯示的本學期作業反而被擠掉。呼叫端另外還會再過濾一次學期。
+    func loadUpcomingDeadlines(limit: Int = 20, notBefore: Date? = nil) async throws -> [MoodleDeadline] {
+        let lookback = Date().addingTimeInterval(-30 * 86_400)
+        let from = Int(max(lookback, notBefore ?? lookback).timeIntervalSince1970)
         let data = try await ajax(
             "core_calendar_get_action_events_by_timesort",
             args: ["limitnum": limit, "timesortfrom": from, "limittononsuspendedevents": true]
@@ -148,14 +153,15 @@ actor MoodleService {
                   let timesort = e["timesort"] as? Int,
                   let urlStr = e["url"] as? String, let url = URL(string: urlStr) else { return nil }
             let name = (e["activityname"] as? String) ?? (e["name"] as? String) ?? "作業"
-            let courseName = courseDisplayName((e["course"] as? [String: Any])?["fullname"] as? String)
+            let course = (e["course"] as? [String: Any])?["fullname"] as? String
             return MoodleDeadline(
                 id: id,
                 name: cleanDeadlineName(name),
-                courseName: courseName,
+                courseName: courseDisplayName(course),
                 due: Date(timeIntervalSince1970: TimeInterval(timesort)),
                 overdue: (e["overdue"] as? Bool) ?? false,
-                url: url
+                url: url,
+                semesterCode: courseSemesterCode(course)
             )
         }
         .sorted { $0.due < $1.due }
@@ -315,6 +321,13 @@ actor MoodleService {
     private func courseDisplayName(_ fullName: String?) -> String {
         guard let fullName else { return "" }
         return MoodleCourse(id: 0, fullName: fullName, shortName: "").displayName
+    }
+
+    /// 課程全名前面的學期代碼("1142_0328_電腦網路" → "1142");沒有就回 nil。
+    private func courseSemesterCode(_ fullName: String?) -> String? {
+        guard let fullName else { return nil }
+        let code = MoodleCourse(id: 0, fullName: fullName, shortName: "").semesterCode
+        return code.isEmpty ? nil : code
     }
 
     /// Strips the Moodle "：到期" / ":due" suffix the calendar appends.

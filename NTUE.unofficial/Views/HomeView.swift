@@ -123,9 +123,10 @@ final class HomeMoodleViewModel {
     func load(forceReload: Bool = false) async {
         isLoading = true
         defer { isLoading = false; loaded = true }
-        if let result = try? await DataStore.shared.moodleDeadlines(forceReload: forceReload),
-           !result.isEmpty || deadlines.isEmpty {
-            deadlines = result
+        if let result = try? await DataStore.shared.moodleDeadlines(forceReload: forceReload) {
+            // 空的有兩種:掉登入(DataStore 不會覆寫快取,以快取為準,別把畫面上
+            // 的真資料清掉),或本學期真的沒有待繳(這時快取也被更新成空的)。
+            deadlines = result.isEmpty ? (DataStore.shared.cachedDeadlines ?? []) : result
         }
     }
 }
