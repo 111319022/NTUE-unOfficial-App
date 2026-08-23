@@ -151,6 +151,22 @@ struct ScheduleView: View {
         vm.shownID == nil || vm.shownID == selectedID
     }
 
+    /// 內容區現在在演哪一齣。換學期(有快取時是同一個 tick 換完的)、或在
+    /// 載入/錯誤/空白/課表之間切換,都會換一個值 —— 拿它當 identity 讓畫面
+    /// 淡入淡出,而不是硬生生跳過去。切 課表/清單 不影響,那邊維持原本的即時切換。
+    private var contentKey: String {
+        if isSwitchingSemester { return "loading" }
+        if vm.errorMessage != nil, vm.timetable.isEmpty { return "error" }
+        if vm.timetable.isEmpty { return "empty" }
+        return "content-\(vm.shownID ?? "")"
+    }
+
+    /// 換學期時舊的課表要讓位給 spinner —— 學校那邊一次要 ~10 秒,繼續顯示上
+    /// 一個學期會讓人以為切換壞掉了。
+    private var isSwitchingSemester: Bool {
+        vm.isLoading && (vm.timetable.isEmpty || !showsSelectedSemester)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !semesterList.isEmpty && !selectedID.isEmpty {
@@ -161,32 +177,42 @@ struct ScheduleView: View {
                         Task { await pick(id) }
                     }
             }
-            if !vm.timetable.isEmpty && showsSelectedSemester {
-                Picker("檢視", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            VStack(spacing: 0) {
+                if !vm.timetable.isEmpty && showsSelectedSemester {
+                    Picker("檢視", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .transition(.opacity)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-            }
-            Group {
-                // 換學期時舊的課表要讓位給 spinner —— 學校那邊一次要 ~10 秒,
-                // 繼續顯示上一個學期會讓人以為切換壞掉了。
-                if vm.isLoading && (vm.timetable.isEmpty || !showsSelectedSemester) {
-                    ProgressView("載入課表…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = vm.errorMessage, vm.timetable.isEmpty {
-                    errorState(error)
-                } else if vm.timetable.isEmpty {
-                    ContentUnavailableView("此學期沒有課表", systemImage: "calendar.badge.exclamationmark")
-                } else {
-                    content
+                ZStack {   // 讓進場/退場的兩份重疊著交叉淡出,而不是先空一格再補上
+                    stateContent
+                        .id(contentKey)
+                        .transition(.opacity)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .animation(.easeInOut(duration: 0.22), value: contentKey)
         }
         .navigationTitle("我的課表")
         .navigationBarTitleDisplayMode(.inline)
         .background(Theme.background)
         .task { await initialLoad() }
+    }
+
+    @ViewBuilder
+    private var stateContent: some View {
+        if isSwitchingSemester {
+            ProgressView("載入課表…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = vm.errorMessage, vm.timetable.isEmpty {
+            errorState(error)
+        } else if vm.timetable.isEmpty {
+            ContentUnavailableView("此學期沒有課表", systemImage: "calendar.badge.exclamationmark")
+        } else {
+            content
+        }
     }
 
     private func initialLoad() async {
