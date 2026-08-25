@@ -23,7 +23,7 @@
 | UI | SwiftUI、`@Observable` |
 | 登入 | 校園入口網 OpenID Connect（`protocol.ntue.edu.tw`） |
 | 抓取 | 裝置端 `URLSession` + SwiftSoup 解析；多數頁面解析 HTML 內的 JSON island |
-| 相依套件 | SwiftSoup（唯一 SPM 相依） |
+| 相依套件 | [SwiftSoup](https://github.com/scinfu/SwiftSoup) 2.13.5（唯一 SPM 相依，MIT，純 HTML 解析、不連網） |
 | 後端 | 無 |
 
 ## 專案結構
@@ -59,6 +59,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 - 帳號密碼只存在裝置 Keychain，用於重新登入校方網站。
 - 抓回的資料快取在 App 的 Application Support 與共用 App Group，登出即清除。
 - 沒有第三方分析、沒有伺服器、沒有資料外傳。
+- 唯一的雲端是 Apple CloudKit 的**公開唯讀**設定（學期日期、校園活動、最低版本），單向下載，不上傳任何個人資料。
+
+想給使用者看的白話版說明（資料流動、Keychain、SwiftSoup、開源如何驗證）：
+[docs/how-it-works.html](docs/how-it-works.html)，另有[隱私權政策](docs/privacy-policy.html)。
 
 ## 授權 / 免責
 

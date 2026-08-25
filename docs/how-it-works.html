@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>運作原理與資安說明 · NTUE unofficial</title>
+<meta name="description" content="NTUE unofficial 是怎麼運作的：在你的裝置上直接登入學校官方系統、用 SwiftSoup 解析網頁、資料只留在本機。沒有後端伺服器，原始碼完全開源。">
+<style>
+  :root{
+    --bg:#f6f1e9; --card:#fffdf9; --text:#2b2620; --muted:#6b6357;
+    --accent:#8c2f2f; --line:#e7ddcd; --ok:#3f6b4a; --warn:#9a6114;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17140f; --card:#211c15; --text:#ece5da; --muted:#a89e8f;
+      --accent:#d98a7a; --line:#332b20; --ok:#8fbf9c; --warn:#d9a441;
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",
+      "Helvetica Neue",Arial,sans-serif;
+    line-height:1.75; font-size:17px;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:40px 22px 96px}
+  header{margin-bottom:28px}
+  .badge{
+    display:inline-block; font-size:13px; font-weight:600; color:var(--accent);
+    background:color-mix(in srgb,var(--accent) 14%,transparent);
+    padding:4px 12px; border-radius:999px; margin-bottom:16px;
+  }
+  h1{font-size:28px; line-height:1.3; margin:0 0 8px}
+  .meta{color:var(--muted); font-size:14px; margin:0}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:22px 24px; margin-top:22px;
+  }
+  h2{font-size:19px; margin:0 0 10px; display:flex; gap:8px; align-items:baseline}
+  h2 .n{color:var(--accent); font-variant-numeric:tabular-nums}
+  h3{font-size:16px; margin:18px 0 6px}
+  p{margin:0 0 12px}
+  p:last-child{margin-bottom:0}
+  ul{margin:0 0 4px; padding-left:20px}
+  li{margin:6px 0}
+  strong{color:var(--text)}
+  a{color:var(--accent)}
+  .tldr{
+    background:color-mix(in srgb,var(--accent) 8%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);
+  }
+  code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
+    background:color-mix(in srgb,var(--muted) 16%,transparent);
+    padding:1px 6px; border-radius:6px; word-break:break-all;
+  }
+  /* 資料流動：直向步驟圖，手機也讀得順 */
+  ol.flow{list-style:none; margin:6px 0 0; padding:0; counter-reset:step}
+  ol.flow li{
+    counter-increment:step; position:relative; margin:0;
+    padding:0 0 18px 46px; border-left:2px solid var(--line);
+  }
+  ol.flow li:last-child{border-left-color:transparent; padding-bottom:0}
+  ol.flow li::before{
+    content:counter(step); position:absolute; left:-15px; top:-2px;
+    width:28px; height:28px; border-radius:50%;
+    background:var(--accent); color:#fffdf9;
+    font-size:14px; font-weight:700; line-height:28px; text-align:center;
+  }
+  ol.flow .t{font-weight:600; display:block}
+  ol.flow .d{color:var(--muted); font-size:15px}
+  .where{
+    display:inline-block; font-size:12.5px; font-weight:600; border-radius:999px;
+    padding:2px 9px; margin-left:6px; vertical-align:1.5px;
+    border:1px solid var(--line); color:var(--muted);
+    background:color-mix(in srgb,var(--muted) 10%,transparent);
+  }
+  .where.dev{color:var(--ok); border-color:color-mix(in srgb,var(--ok) 40%,transparent);
+    background:color-mix(in srgb,var(--ok) 12%,transparent)}
+  table{width:100%; border-collapse:collapse; font-size:15.5px; margin-top:4px}
+  th,td{text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-size:14px; color:var(--muted); font-weight:600}
+  tr:last-child td{border-bottom:none}
+  .scroll{overflow-x:auto}
+  details{border-top:1px solid var(--line); padding:12px 0}
+  details:first-of-type{border-top:none; padding-top:0}
+  details:last-of-type{padding-bottom:0}
+  summary{cursor:pointer; font-weight:600; list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"＋ "; color:var(--accent); font-weight:700}
+  details[open] summary::before{content:"－ "}
+  details p{margin-top:10px; color:var(--muted)}
+  details p strong{color:var(--text)}
+  .note{color:var(--muted); font-size:14.5px}
+  nav.foot-nav{display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:8px}
+  footer{margin-top:36px; color:var(--muted); font-size:14px; text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="badge">NTUE.unofficial · 非官方 App</span>
+    <h1>它到底怎麼運作？</h1>
+    <p class="meta">給要把帳號密碼交出去之前，想先搞清楚的人看的技術說明。</p>
+  </header>
+
+  <section class="card tldr">
+    <h2>三句話版本</h2>
+    <ul>
+      <li>這個 App <strong>就是一個幫你按按鈕的瀏覽器</strong>：它在<strong>你的手機上</strong>用你的帳號登入學校官方網站，把頁面抓下來、重新排版成好看的原生畫面。</li>
+      <li><strong>沒有中間站</strong>。我（開發者）沒有架任何伺服器，你的帳密與成績課表<strong>從來沒有經過我這裡</strong>——不是「我保證不看」，是<strong>結構上沒有地方可以看</strong>。</li>
+      <li><strong>整包程式碼公開在 GitHub</strong>，任何懂 Swift 的同學都可以自己審、自己編譯，不用相信我的人品。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">1.</span> 資料是怎麼流動的</h2>
+    <p>從你按下「登入」到課表出現在畫面上，完整流程是這樣：</p>
+    <ol class="flow">
+      <li>
+        <span class="t">你在 App 裡輸入學號與密碼<span class="where">你的手機</span></span>
+        <span class="d">跟你在 Safari 打開校園入口網打字，是同一件事。</span>
+      </li>
+      <li>
+        <span class="t">帳密以 HTTPS 直接送到學校官方登入伺服器<span class="where">→ protocol.ntue.edu.tw</span></span>
+        <span class="d">走的是學校原本的 OpenID Connect 登入流程（跟網頁版同一支 API、同一個網址）。這段連線的另一端<strong>只有學校</strong>，中間沒有任何我的機器。</span>
+      </li>
+      <li>
+        <span class="t">學校驗證通過，發一組登入 Cookie 回到你的手機<span class="where">你的手機</span></span>
+        <span class="d">Cookie 存在系統的 Cookie 儲存區，跟瀏覽器的行為一樣。</span>
+      </li>
+      <li>
+        <span class="t">App 帶著這組 Cookie，去抓你有權限看的頁面<span class="where">→ nsa.ntue.edu.tw · md.ntue.edu.tw</span></span>
+        <span class="d">iNTUE 校務系統要成績、課表、請假、缺曠；Moodle 要作業與課程公告。抓回來的是原始 HTML 網頁，跟瀏覽器收到的一模一樣。</span>
+      </li>
+      <li>
+        <span class="t">在手機上用 SwiftSoup 把 HTML 解析成資料<span class="where">你的手機</span></span>
+        <span class="d">從一堆網頁標籤裡挑出「星期三第 3 節是 xxx」這種欄位。<strong>這一步完全離線</strong>，只是在處理剛剛下載回來的那串文字。</span>
+      </li>
+      <li>
+        <span class="t">結果存在裝置本機，畫成原生畫面<span class="where">你的手機</span></span>
+        <span class="d">快取放在 App 沙盒與 App 群組（給小工具、Live Activity 讀），所以下次開 App 不用等 10 秒。登出即清除。</span>
+      </li>
+    </ol>
+    <p class="note" style="margin-top:16px">整條路徑上，資料的落點只有兩個：<strong>學校的伺服器</strong>和<strong>你的手機</strong>。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">2.</span> 為什麼開發者「無法」看到你的資料</h2>
+    <p>「我不會偷看」是承諾，承諾可以被打破。下面這幾點是<strong>可以驗證的事實</strong>：</p>
+    <ul>
+      <li><strong>沒有後端伺服器。</strong>這個專案沒有任何 API 主機、資料庫或 log 伺服器。資料想外流也得先有個地方可流。</li>
+      <li><strong>App 只連得到三個學校網域</strong>（<code>protocol.ntue.edu.tw</code>、<code>nsa.ntue.edu.tw</code>、<code>md.ntue.edu.tw</code>）<strong>與 Apple 的服務</strong>。原始碼裡把所有 <code>https://</code> 開頭的字串抓出來就這幾個，沒有第四個目的地。</li>
+      <li><strong>沒有任何分析 / 廣告 / 當機回報 SDK。</strong>沒有 Google Analytics、沒有 Firebase、沒有 Facebook SDK，也沒有廣告識別碼。</li>
+      <li><strong>只有一個第三方套件</strong>（SwiftSoup，見下），而它是一個不連網的純解析函式庫。</li>
+    </ul>
+    <h3>你可以怎麼自己驗證</h3>
+    <ul>
+      <li>在 GitHub 上搜尋整個專案的 <code>https://</code> 或 <code>URLSession</code>，看它到底連去哪裡。</li>
+      <li>看 App Store 頁面的「App 隱私」標籤：本 App 標示為<strong>未收集任何資料</strong>。</li>
+      <li>真的想較真：用 Charles / Proxyman 之類的工具側錄手機流量，看看封包往哪送。</li>
+      <li>最徹底的做法：<strong>把原始碼抓下來，用 Xcode 自己編譯裝到自己手機上</strong>——那份就完全在你的掌握裡。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">3.</span> 帳號密碼存在哪裡</h2>
+    <ul>
+      <li>存在 iOS 系統的 <strong>Keychain（鑰匙圈）</strong>——就是 Safari 幫你記密碼用的那個加密儲存區，由系統與裝置硬體保護，其他 App 讀不到。</li>
+      <li><strong>為什麼要存？</strong>學校的登入狀態很短命，不存的話你每次開 App、每次小工具想更新課表都得重打一次密碼。存下來只為了「悄悄重新登入」。</li>
+      <li>密碼<strong>只會被送到一個地方</strong>：學校官方登入網址 <code>protocol.ntue.edu.tw</code>，而且是 HTTPS 加密連線。</li>
+      <li><strong>登出</strong>會刪掉本機密碼並清空所有快取；<strong>刪除 App</strong> 會把 Keychain 裡的資料一起帶走。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">4.</span> 唯一的雲端：一份公用設定檔</h2>
+    <p>老實說有一個地方會連到 Apple 的雲端服務（CloudKit）。講清楚它是什麼：</p>
+    <div class="scroll">
+      <table>
+        <tr><th>存了什麼</th><th>用途</th><th>方向</th></tr>
+        <tr><td>學期行事曆（開學日、期末日、選課日）</td><td>首頁「學期倒數」、判斷是不是放假中</td><td>雲端 → 你的手機</td></tr>
+        <tr><td>校園活動（校慶、考試週…）</td><td>校園行事曆頁面</td><td>雲端 → 你的手機</td></tr>
+        <tr><td>最低版本設定</td><td>舊版本有嚴重錯誤時提示更新</td><td>雲端 → 你的手機</td></tr>
+      </table>
+    </div>
+    <p style="margin-top:14px">這是一個<strong>公開、唯讀</strong>的資料庫，讓我可以改開學日期而不用發新版 App。它是<strong>單向往下讀</strong>的：
+    <strong>你的任何個人資料、帳密、成績課表都不會被寫上去</strong>，也沒有程式碼在做這件事。
+    （App 裡的開發者後台則是用 iCloud 帳號的雜湊白名單擋住，一般使用者看不到、也打不開。）</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">5.</span> 有些畫面是直接開官方網頁</h2>
+    <p>凡是<strong>會寫入學校系統</strong>的操作（例如<strong>請假申請</strong>），App 不自己代送表單，而是在內建瀏覽器裡<strong>載入學校官方的那一頁</strong>，讓你自己填、自己送出。修業進度、在學證明的 PDF 也是直接抓官方產生的檔案。</p>
+    <p>理由很簡單：<strong>會影響你學籍的事情，寧可讓官方頁面自己處理</strong>。我不想因為某個欄位猜錯，害你送出一張莫名其妙的假單。這也表示 App 沒有能力替你改任何資料——它做的事，你自己開瀏覽器也做得到。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">6.</span> SwiftSoup 是什麼？為什麼可以放心</h2>
+    <p><strong>SwiftSoup 是一個開源的 HTML 解析函式庫</strong>，它是 Java 世界用了十幾年的老牌工具 <strong>jsoup</strong> 的 Swift 版移植，作者 scinfu，採 <strong>MIT 授權</strong>。</p>
+    <p>它的工作只有一件：<strong>把一段 HTML 文字，變成程式可以查詢的結構</strong>——像是「找出這個表格裡所有的列」。打個比方，網頁抓回來是一整張報紙，SwiftSoup 是那把幫你把要看的那一欄剪下來的剪刀。</p>
+    <ul>
+      <li><strong>它不連網路</strong>：SwiftSoup 從頭到尾只處理已經下載回來的字串，本身不發任何請求。網路的部分是 Apple 官方的 <code>URLSession</code> 在做。</li>
+      <li><strong>它碰不到你的密碼</strong>：帳密走的是 Keychain 與登入請求，跟解析器完全不同路徑。</li>
+      <li><strong>它是本專案唯一的第三方相依</strong>：相依愈少，供應鏈風險愈小——沒有一堆你沒聽過的套件在背後跑。</li>
+      <li><strong>版本被鎖死</strong>：<code>Package.resolved</code> 記錄了精確的版本與 commit 雜湊（<code>2.13.5</code>），任何人編譯出來的都是同一份程式碼，套件作者也無法偷偷替換掉已發布的版本。</li>
+      <li>原始碼在此：<a href="https://github.com/scinfu/SwiftSoup">github.com/scinfu/SwiftSoup</a>，全球有大量 App 在用，是被長期檢視過的專案。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">7.</span> 這個 App 本身也是開源的</h2>
+    <p>整份原始碼（每一行網路請求、每一個存檔位置）都公開在
+    <a href="https://github.com/111319022/NTUE-unOfficial-App">GitHub</a>，你可以：</p>
+    <ul>
+      <li><strong>自己審</strong>：<code>Network/</code> 資料夾就是全部的登入、抓取、儲存邏輯，看完不用半小時。</li>
+      <li><strong>自己編譯</strong>：用 Xcode 開起來就能裝到自己的裝置上。</li>
+      <li><strong>回報問題或提建議</strong>：開個 <a href="https://github.com/111319022/NTUE-unOfficial-App/issues">Issue</a>，發現安全疑慮更歡迎直接指出來。</li>
+    </ul>
+    <p>另外，上架 App Store 的版本經過 Apple 審核，並附有
+    <a href="privacy-policy.html">隱私權政策</a>與隱私清單（Privacy Manifest）。請務必從 App Store 安裝，
+    <strong>不要安裝來路不明的側載版本</strong>——別人改過的版本，我無法保證它做了什麼。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">8.</span> 對學校系統會不會造成負擔？</h2>
+    <ul>
+      <li>App 抓的頁面<strong>就是你自己打開瀏覽器會看的那幾頁</strong>，沒有繞過任何權限、沒有碰別人的資料——你看不到的東西，App 也一樣看不到。</li>
+      <li>內建<strong>請求佇列</strong>限制同時連線數（最多 3 個），並讓你正在等的畫面優先，不會對學校伺服器連發請求。</li>
+      <li>資料有快取，過去學期讀過一次之後就離線供應，<strong>整體請求量比你自己一頁頁點還少</strong>。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">9.</span> 誠實的限制</h2>
+    <ul>
+      <li>這是<strong>學生個人作品，非學校官方</strong>，學校沒有背書，也不負任何責任。</li>
+      <li>資料<strong>一律以官方系統為準</strong>。畢業學分、成績這類會影響你的事情，請回官方系統再確認一次。</li>
+      <li>學校網站改版時，解析可能會壞掉（畫面空白或資料怪怪的）。遇到請<a href="https://github.com/111319022/NTUE-unOfficial-App/issues">回報</a>，我會修。</li>
+      <li>沒有推播伺服器，所有提醒都是<strong>本機通知</strong>，因此提醒依賴 App 曾經更新過課表資料。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="n">10.</span> 常見疑慮</h2>
+
+    <details>
+      <summary>你會不會把我的密碼存起來偷用？</summary>
+      <p>做不到。<strong>沒有伺服器可以收</strong>，密碼只在你手機的 Keychain 與學校登入頁之間往返。這件事不用相信我，去看原始碼裡 <code>AuthService.swift</code> 的每一個網址就知道。</p>
+    </details>
+
+    <details>
+      <summary>這樣算不算「駭」學校系統？</summary>
+      <p>不算。App 是<strong>用你自己的帳號、看你自己本來就看得到的頁面</strong>，跟你開 Safari 登入完全一樣，沒有嘗試繞過任何驗證或存取別人的資料。它只是把排版做得比較好看。</p>
+    </details>
+
+    <details>
+      <summary>用了會不會被學校停權？</summary>
+      <p>行為上等同正常瀏覽，也有限制連線數避免造成負擔。不過這畢竟是非官方工具，<strong>使用風險自負</strong>；若學校日後有相關規範，請以學校的規定為準。</p>
+    </details>
+
+    <details>
+      <summary>換手機、登出之後資料會怎樣？</summary>
+      <p><strong>登出</strong>：立刻刪除本機密碼並清空所有快取。<strong>刪除 App</strong>：連 Keychain 裡的帳密一起消失。因為沒有雲端備份你的資料，換手機就是重新登入一次而已。</p>
+    </details>
+
+    <details>
+      <summary>我不是資工系的，看不懂程式碼怎麼辦？</summary>
+      <p>可以請任何一位寫程式的朋友幫你看——這正是開源的意義：<strong>你不需要信任我，只需要有人能查</strong>。也歡迎直接寫信問我。</p>
+    </details>
+  </section>
+
+  <footer>
+    <nav class="foot-nav">
+      <a href="index.html">首頁</a>
+      <a href="privacy-policy.html">隱私權政策</a>
+      <a href="support.html">支援</a>
+      <a href="https://github.com/111319022/NTUE-unOfficial-App">GitHub</a>
+    </nav>
+    <p style="margin-top:14px">© 2026 NTUE unofficial　·　學生自製，非學校官方出品</p>
+  </footer>
+</div>
+</body>
+</html>
